@@ -1,21 +1,51 @@
 const mongoose = require('mongoose');
 
-const SubmissionSchema = new mongoose.Schema({
-    assignmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Assignment' },
-    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    filePath: String,
-
-    aiGrade: Number,
-    aiConfidence: Number,
-    aiFeedback: String,
-
-    finalGrade: Number,
-    status: {
-        type: String,
-        enum: ['uploaded', 'ai_pending', 'ai_completed', 'teacher_reviewed'],
-        default: 'uploaded'
+const submissionSchema = new mongoose.Schema(
+  {
+    assignmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Assignment',
+      required: true,
     },
-    createdAt: { type: Date, default: Date.now }
-});
 
-module.exports = mongoose.model('Submission', SubmissionSchema);
+    studentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+
+    pdfPath: {
+      type: String,
+      required: true,
+    },
+
+    extractedText: {
+      type: String,
+      default: '',
+    },
+
+    grade: {
+      type: Number,
+      default: null,
+    },
+
+    feedback: {
+      type: String,
+      default: '',
+    },
+
+    gradedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: { createdAt: 'submittedAt', updatedAt: false },
+    collection: 'submissions',
+  }
+);
+
+submissionSchema.index({ assignmentId: 1 });
+submissionSchema.index({ studentId: 1 });
+
+module.exports = mongoose.model('Submission', submissionSchema);
