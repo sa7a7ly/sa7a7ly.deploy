@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { submitAssignment, getAssignmentById } from '../services/api';
@@ -11,9 +11,32 @@ const SubmitAssignmentPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [assignment, setAssignment] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAssignment = async () => {
+      try {
+        const response = await getAssignmentById(assignmentId);
+        if (isMounted) {
+          setAssignment(response.data);
+        }
+      } catch (_) {
+        // If this fails, we can still show the grade without max points.
+      }
+    };
+
+    if (assignmentId) {
+      loadAssignment();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [assignmentId]);
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -125,7 +148,10 @@ const SubmitAssignmentPage = () => {
                   ⭐ Grade
                 </p>
                 <p className="text-4xl font-bold text-yellow-600">
-                  {result.grade}%
+                  {result.grade}
+                  {assignment?.totalPoints != null
+                    ? ` / ${assignment.totalPoints}`
+                    : ''}
                 </p>
               </div>
 
