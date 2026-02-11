@@ -4,10 +4,41 @@ const crypto = require("crypto");
 const Submission = require("../models/Submission");
 const Assignment = require("../models/Assignment");
 
+const GEMINI_URL =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
+    process.env.GEMINI_API_KEY;
+
+// Helper: Call Gemini with retry
+async function callGemini(payload, retries = 2) {
+    try {
+        const response = await axios.post(GEMINI_URL, payload, {
+            timeout: 180000,
+        });
+
+        if (
+            response &&
+            response.data &&
+            response.data.candidates &&
+            response.data.candidates.length > 0 &&
+            response.data.candidates[0].content &&
+            response.data.candidates[0].content.parts &&
+            response.data.candidates[0].content.parts.length > 0
+        ) {
+            return response.data.candidates[0].content.parts[0].text;
+        }
+
+        throw new Error("Empty Gemini response");
+    } catch (err) {
+        if (retries > 0) {
+            return await callGemini(payload, retries - 1);
+        }
+        throw err;
+    }
+}
+
 exports.submitAssignment = async(req, res) => {
     try {
-        const assignmentId = req.body.assignmentId;
-        const studentId = req.body.studentId;
+        const { assignmentId, studentId } = req.body;
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
@@ -21,154 +52,200 @@ exports.submitAssignment = async(req, res) => {
         const studentPdf = fs.readFileSync(req.file.path);
         const modelPdf = fs.readFileSync(assignment.modelAnswerPdfPath);
 
-        // 🔒 Deterministic identical-file check
-        const studentHash = crypto.createHash("sha256").update(studentPdf).digest("hex");
-        const modelHash = crypto.createHash("sha256").update(modelPdf).digest("hex");
+        // 🔒 Identical file check
+        const studentHash = crypto
+            .createHash("sha256")
+            .update(studentPdf)
+            .digest("hex");
+        const modelHash = crypto
+            .createHash("sha256")
+            .update(modelPdf)
+            .digest("hex");
 
         if (studentHash === modelHash) {
             const submission = await Submission.create({
-                assignmentId: assignmentId,
-                studentId: studentId,
+                assignmentId,
+                studentId,
                 pdfPath: req.file.path,
                 grade: assignment.totalPoints,
                 feedback: "Identical to model answer. Full marks awarded.",
-                gradedAt: new Date()
+                gradedAt: new Date(),
             });
 
             return res.status(201).json(submission);
         }
 
-        const GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
-            process.env.GEMINI_API_KEY;
+        // 🔥 STRICT PROMPT
+        const prompt = `
+You are an extremely strict university professor.
 
-        const geminiResponse = await axios.post(GEMINI_URL, {
-            contents: [{
-                parts: [{
-                        text: `You are a strict but fair university instructor.
+Compare the STUDENT PDF and MODEL ANSWER PDF.
 
-Compare the STUDENT PDF with the MODEL ANSWER PDF.
+STRICT GRADING RULES:
 
-Return JSON ONLY in this exact format:
+1) Extract all questions from MODEL ANSWER.
+2) Grade EACH question separately.
+3) Deduct marks for:
+   - Missing steps
+   - Missing formulas
+   - Missing explanations
+   - Logical mistakes
+   - Weak justification
+   - Incomplete answer
+4) If something is not written, it is WRONG.
+5) DO NOT assume intention.
+6) DO NOT mix questions.
+7) Be extremely strict.
+
+DOUBLE CHECK BEFORE RETURNING:
+- Sum of studentMarks must equal totalGrade.
+- studentMarks <= maxMarks.
+- marksLost = maxMarks - studentMarks.
+- No invented mistakes.
+
+Return ONLY valid JSON:
 
 {
-  "grade": number,
-  "summary": "2–3 sentence overall evaluation",
-  "strengths": ["point 1", "point 2"],
-  "mistakes": ["mistake 1", "mistake 2"],
-  "improvements": ["specific actionable advice"]
+  "totalGrade": number,
+  "questions": [
+    {
+      "questionNumber": "Q1",
+      "maxMarks": number,
+      "studentMarks": number,
+      "marksLost": number,
+      "reasonForDeduction": "Clear explanation"
+    }
+  ],
+  "overallSummary": "2-3 sentence strict evaluation",
+  "majorMistakes": ["mistake 1"],
+  "improvementAdvice": ["improvement 1"]
 }
 
-Rules:
-- Grade must be from 0 to ${assignment.totalPoints}
-- Do NOT invent mistakes
-- If answers match the model, mistakes must be an empty array`
+Total maximum marks = ${assignment.totalPoints}
+DO NOT return markdown.
+ONLY return pure JSON.
+`;
+
+        const payload = {
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    {
+                        inlineData: {
+                            mimeType: "application/pdf",
+                            data: studentPdf.toString("base64"),
+                        },
                     },
                     {
                         inlineData: {
                             mimeType: "application/pdf",
-                            data: studentPdf.toString("base64")
-                        }
+                            data: modelPdf.toString("base64"),
+                        },
                     },
-                    {
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: modelPdf.toString("base64")
-                        }
-                    }
-                ]
-            }]
-        });
+                ],
+            }, ],
+        };
 
-        // Safe response extraction (no optional chaining)
-        let aiText = null;
+        let aiText = await callGemini(payload);
 
-        if (
-            geminiResponse &&
-            geminiResponse.data &&
-            geminiResponse.data.candidates &&
-            geminiResponse.data.candidates.length > 0 &&
-            geminiResponse.data.candidates[0].content &&
-            geminiResponse.data.candidates[0].content.parts &&
-            geminiResponse.data.candidates[0].content.parts.length > 0
-        ) {
-            aiText = geminiResponse.data.candidates[0].content.parts[0].text;
-        }
-
-        if (!aiText) {
-            throw new Error("Empty Gemini response");
-        }
-
+        // Clean response
         const cleaned = aiText
             .replace(/```json/gi, "")
             .replace(/```/g, "")
             .trim();
 
-        const result = JSON.parse(cleaned);
+        let result;
+        try {
+            result = JSON.parse(cleaned);
+        } catch (err) {
+            throw new Error("AI returned invalid JSON");
+        }
 
-        // 🧠 Anti-hallucination safeguard
+        // 🧠 Backend Safety Check
+        let calculatedTotal = 0;
+
+        if (result.questions && result.questions.length > 0) {
+            result.questions.forEach((q) => {
+                if (q.studentMarks > q.maxMarks) {
+                    q.studentMarks = q.maxMarks;
+                }
+
+                q.marksLost = q.maxMarks - q.studentMarks;
+                calculatedTotal += q.studentMarks;
+            });
+        }
+
+        if (calculatedTotal !== result.totalGrade) {
+            result.totalGrade = calculatedTotal;
+        }
+
+        if (result.totalGrade > assignment.totalPoints) {
+            result.totalGrade = assignment.totalPoints;
+        }
+
+        // 📝 Build feedback
+        let feedbackText = "Question Breakdown:\n\n";
+
+        if (result.questions && result.questions.length > 0) {
+            result.questions.forEach((q) => {
+                feedbackText += `${q.questionNumber}\n`;
+                feedbackText += `Max Marks: ${q.maxMarks}\n`;
+                feedbackText += `Your Marks: ${q.studentMarks}\n`;
+                feedbackText += `Marks Lost: ${q.marksLost}\n`;
+                feedbackText += `Reason: ${q.reasonForDeduction}\n\n`;
+            });
+        }
+
+        feedbackText += "Overall Summary:\n" + result.overallSummary + "\n\n";
+
+        if (result.majorMistakes && result.majorMistakes.length > 0) {
+            feedbackText += "Major Mistakes:\n";
+            result.majorMistakes.forEach((m) => {
+                feedbackText += "- " + m + "\n";
+            });
+        }
+
         if (
-            result.mistakes &&
-            result.mistakes.length === 0 &&
-            result.grade < assignment.totalPoints
+            result.improvementAdvice &&
+            result.improvementAdvice.length > 0
         ) {
-            result.grade = assignment.totalPoints;
-        }
-
-        // 📝 Build human-readable feedback
-        let feedbackText = result.summary + "\n\n";
-
-        if (result.strengths && result.strengths.length > 0) {
-            feedbackText += "Strengths:\n";
-            for (let i = 0; i < result.strengths.length; i++) {
-                feedbackText += "- " + result.strengths[i] + "\n";
-            }
-        }
-
-        if (result.mistakes && result.mistakes.length > 0) {
-            feedbackText += "\nMistakes:\n";
-            for (let i = 0; i < result.mistakes.length; i++) {
-                feedbackText += "- " + result.mistakes[i] + "\n";
-            }
-        }
-
-        if (result.improvements && result.improvements.length > 0) {
-            feedbackText += "\nHow to improve:\n";
-            for (let i = 0; i < result.improvements.length; i++) {
-                feedbackText += "- " + result.improvements[i] + "\n";
-            }
+            feedbackText += "\nHow To Improve:\n";
+            result.improvementAdvice.forEach((i) => {
+                feedbackText += "- " + i + "\n";
+            });
         }
 
         const submission = await Submission.create({
-            assignmentId: assignmentId,
-            studentId: studentId,
+            assignmentId,
+            studentId,
             pdfPath: req.file.path,
-            grade: result.grade,
+            grade: result.totalGrade,
             feedback: feedbackText.trim(),
-            gradedAt: new Date()
+            gradedAt: new Date(),
         });
 
         res.status(201).json(submission);
-
     } catch (err) {
         console.error(
             "SUBMISSION ERROR:",
-            err && err.response && err.response.data ? err.response.data : err
+            err && err.response && err.response.data ?
+            err.response.data :
+            err
         );
 
         res.status(500).json({
-            message: err && err.response && err.response.data && err.response.data.error ?
-                err.response.data.error.message :
-                err.message
+            message: err &&
+                err.response &&
+                err.response.data &&
+                err.response.data.error ?
+                err.response.data.error.message : err.message,
         });
     }
 };
 
 // GET submissions
 exports.getSubmissions = async(req, res) => {
-    const query = req.query.assignmentId ?
-        { assignmentId: req.query.assignmentId } :
-        {};
+    const query = req.query.assignmentId ? { assignmentId: req.query.assignmentId } : {};
 
     const submissions = await Submission.find(query)
         .populate("studentId", "name email")
