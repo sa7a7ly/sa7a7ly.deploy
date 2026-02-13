@@ -47,6 +47,9 @@ export const createTeacher = (data, adminSecret) =>
 export const getTeacherAssistants = (teacherId) =>
   API.get(`/users/teachers/${teacherId}/assistants`);
 
+export const getTeacherAssistantCode = (teacherId) =>
+  API.get(`/users/teachers/${teacherId}/assistant-code`);
+
 export const createAssignment = (formData) =>
   API.post('/assignments', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

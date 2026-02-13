@@ -12,7 +12,6 @@ const AdminTeachers = () => {
     password: '',
     adminSecret: localStorage.getItem('adminSecret') || '',
   });
-  const [createdCode, setCreatedCode] = useState('');
 
   const fetchTeachers = useCallback(async () => {
     try {
@@ -43,7 +42,6 @@ const AdminTeachers = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setCreatedCode('');
     setSubmitting(true);
 
     try {
@@ -54,7 +52,7 @@ const AdminTeachers = () => {
 
       localStorage.setItem('adminSecret', formData.adminSecret);
 
-      const response = await createTeacher(
+      await createTeacher(
         {
           name: formData.name,
           email: formData.email,
@@ -63,7 +61,6 @@ const AdminTeachers = () => {
         formData.adminSecret
       );
 
-      setCreatedCode(response.data?.assistantCode || '');
       setFormData((prev) => ({
         ...prev,
         name: '',
@@ -85,11 +82,6 @@ const AdminTeachers = () => {
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
             {error}
-          </div>
-        )}
-        {createdCode && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-            Assistant Code: <span className="font-mono font-bold">{createdCode}</span>
           </div>
         )}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">

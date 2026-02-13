@@ -29,6 +29,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       select: false,
     },
+    assistantCode: {
+      type: String,
+      select: false,
+    },
     assistantTeacherId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getClassrooms, createClassroom, getTeacherAssistants } from '../services/api';
+import {
+  getClassrooms,
+  createClassroom,
+  getTeacherAssistants,
+  getTeacherAssistantCode,
+} from '../services/api';
 import CreateClassroomModal from '../components/CreateClassroomModal';
 
 const TeacherDashboard = () => {
@@ -10,6 +15,8 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [assistantCode, setAssistantCode] = useState('');
+  const [loadingAssistantCode, setLoadingAssistantCode] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
@@ -62,6 +69,18 @@ const TeacherDashboard = () => {
     navigate('/');
   };
 
+  const handleViewAssistantCode = async () => {
+    try {
+      setLoadingAssistantCode(true);
+      const response = await getTeacherAssistantCode(user._id);
+      setAssistantCode(response.data?.assistantCode || '');
+    } catch (err) {
+      setError('Failed to load teacher assistant code');
+    } finally {
+      setLoadingAssistantCode(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow">
@@ -82,6 +101,20 @@ const TeacherDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="bg-white rounded-lg shadow p-6 mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Linked Assistants</h2>
+          <div className="mb-4">
+            <button
+              onClick={handleViewAssistantCode}
+              disabled={loadingAssistantCode}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+            >
+              {loadingAssistantCode ? 'Loading...' : 'View My Teacher Assistant Code'}
+            </button>
+          </div>
+          {assistantCode && (
+            <div className="mb-4 bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-3 rounded">
+              Teacher Assistant Code: <span className="font-mono font-bold">{assistantCode}</span>
+            </div>
+          )}
           {assistants.length === 0 ? (
             <p className="text-gray-600">No assistants linked yet.</p>
           ) : (

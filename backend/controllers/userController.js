@@ -122,14 +122,34 @@ exports.createTeacher = async (req, res) => {
       return res.status(403).json({ message: 'Admin authorization required' });
     }
 
-    const { name, email, password } = req.body;
+    const { name, email, password, assistantCode } = req.body;
 
     const exists = await User.findOne({ email });
     if (exists) {
       return res.status(400).json({ message: 'Email already exists' });
     }
 
-    const { code, assistantCodeHash } = await createUniqueAssistantCode();
+    let code;
+    let assistantCodeHash;
+    const normalizedProvidedCode = normalizeCode(assistantCode);
+
+    if (normalizedProvidedCode) {
+      if (!/^\d{8}$/.test(normalizedProvidedCode)) {
+        return res.status(400).json({ message: 'Teacher assistant key must be 8 digits' });
+      }
+
+      assistantCodeHash = hashAssistantCode(normalizedProvidedCode);
+      const existingCode = await User.exists({ role: ROLE.TEACHER, assistantCodeHash });
+      if (existingCode) {
+        return res.status(400).json({ message: 'Teacher assistant key already exists' });
+      }
+
+      code = normalizedProvidedCode;
+    } else {
+      const generated = await createUniqueAssistantCode();
+      code = generated.code;
+      assistantCodeHash = generated.assistantCodeHash;
+    }
 
     const user = await User.create({
       name,
@@ -137,6 +157,7 @@ exports.createTeacher = async (req, res) => {
       passwordHash: password,
       role: ROLE.TEACHER,
       assistantCodeHash,
+      assistantCode: code,
     });
 
     res.status(201).json({
@@ -227,6 +248,29 @@ exports.getTeacherAssistants = async (req, res) => {
     res.json(assistants);
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+};
+
+// GET assistant code for a teacher
+exports.getTeacherAssistantCode = async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+    const teacher = await User.findOne({ _id: teacherId, role: ROLE.TEACHER }).select('+assistantCode +assistantCodeHash');
+
+    if (!teacher) {
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    if (!teacher.assistantCode || !teacher.assistantCodeHash) {
+      const generated = await createUniqueAssistantCode();
+      teacher.assistantCode = generated.code;
+      teacher.assistantCodeHash = generated.assistantCodeHash;
+      await teacher.save();
+    }
+
+    return res.json({ assistantCode: teacher.assistantCode });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
   }
 };
 
