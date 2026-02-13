@@ -24,8 +24,12 @@ const LoginPage = () => {
 
       login(response.data);
 
-      if (response.data.role === 'TEACHER') {
+      if (response.data.role === 'ADMIN') {
+        navigate('/admin/users');
+      } else if (response.data.role === 'TEACHER') {
         navigate('/teacher-dashboard');
+      } else if (response.data.role === 'ASSISTANT') {
+        navigate('/assistant-dashboard');
       } else {
         navigate('/student-dashboard');
       }

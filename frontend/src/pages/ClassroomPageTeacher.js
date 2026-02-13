@@ -53,7 +53,9 @@ const ClassroomPageTeacher = () => {
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate('/teacher-dashboard')}
+              onClick={() =>
+                navigate(user?.role === 'ASSISTANT' ? '/assistant-dashboard' : '/teacher-dashboard')
+              }
               className="text-indigo-600 hover:text-indigo-800 font-semibold"
             >
               ← Back

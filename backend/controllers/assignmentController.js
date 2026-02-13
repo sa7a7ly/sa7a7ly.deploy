@@ -1,4 +1,11 @@
 const Assignment = require('../models/Assignment');
+const Classroom = require('../models/Classroom');
+const User = require('../models/User');
+
+const ROLE = {
+  TEACHER: 'TEACHER',
+  ASSISTANT: 'ASSISTANT',
+};
 
 // CREATE
 exports.createAssignment = async (req, res) => {
@@ -10,6 +17,27 @@ exports.createAssignment = async (req, res) => {
       return res.status(400).json({ message: 'Model answer PDF required' });
     }
 
+    const classroom = await Classroom.findById(req.body.classroomId);
+    if (!classroom) {
+      return res.status(404).json({ message: 'Classroom not found' });
+    }
+
+    const creator = await User.findById(req.body.createdBy);
+    if (!creator) {
+      return res.status(404).json({ message: 'Creator not found' });
+    }
+
+    const isTeacherOfClassroom =
+      creator.role === ROLE.TEACHER &&
+      classroom.teacherId.toString() === creator._id.toString();
+    const isAssistantInClassroom =
+      creator.role === ROLE.ASSISTANT &&
+      classroom.assistantIds.some((id) => id.toString() === creator._id.toString());
+
+    if (!isTeacherOfClassroom && !isAssistantInClassroom) {
+      return res.status(403).json({ message: 'Not allowed to create assignment in this classroom' });
+    }
+
     const assignment = await Assignment.create({
       classroomId: req.body.classroomId,
       title: req.body.title,
@@ -19,6 +47,9 @@ exports.createAssignment = async (req, res) => {
       totalPoints: req.body.totalPoints || 100,
       createdBy: req.body.createdBy,
     });
+
+    classroom.assignments.push(assignment._id);
+    await classroom.save();
 
     res.status(201).json(assignment);
   } catch (err) {

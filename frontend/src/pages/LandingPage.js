@@ -8,8 +8,12 @@ const LandingPage = () => {
 
   React.useEffect(() => {
     if (user) {
-      if (user.role === 'TEACHER') {
+      if (user.role === 'ADMIN') {
+        navigate('/admin/users');
+      } else if (user.role === 'TEACHER') {
         navigate('/teacher-dashboard');
+      } else if (user.role === 'ASSISTANT') {
+        navigate('/assistant-dashboard');
       } else {
         navigate('/student-dashboard');
       }

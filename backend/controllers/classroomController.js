@@ -1,14 +1,30 @@
 const Classroom = require('../models/Classroom');
+const User = require('../models/User');
+
+const ROLE = {
+  TEACHER: 'TEACHER',
+  ASSISTANT: 'ASSISTANT',
+  STUDENT: 'STUDENT',
+};
 
 // CREATE classroom (teacher)
 exports.createClassroom = async (req, res) => {
   try {
+    const teacher = await User.findOne({
+      _id: req.body.teacherId,
+      role: ROLE.TEACHER,
+    });
+
+    if (!teacher) {
+      return res.status(403).json({ message: 'Only teachers can create classrooms' });
+    }
+
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const classroom = await Classroom.create({
       name: req.body.name,
-      teacherId: req.body.teacherId,
-      joinCode
+      teacherId: teacher._id,
+      joinCode,
     });
 
     res.status(201).json(classroom);
@@ -78,13 +94,41 @@ exports.joinClassroom = async (req, res) => {
 
     if (!classroom) return res.status(404).json({ message: 'Invalid code' });
 
-    if (classroom.studentIds.includes(req.body.studentId))
-      return res.status(400).json({ message: 'Already joined' });
+    const user = await User.findById(req.body.userId || req.body.studentId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    classroom.studentIds.push(req.body.studentId);
-    await classroom.save();
+    if (user.role === ROLE.STUDENT) {
+      if (classroom.studentIds.some((id) => id.toString() === user._id.toString())) {
+        return res.status(400).json({ message: 'Already joined' });
+      }
 
-    res.json({ message: 'Joined successfully' });
+      classroom.studentIds.push(user._id);
+      await classroom.save();
+      return res.json({ message: 'Joined successfully' });
+    }
+
+    if (user.role === ROLE.ASSISTANT) {
+      if (!user.assistantTeacherId) {
+        return res.status(403).json({ message: 'Assistant is not linked to a teacher' });
+      }
+
+      if (classroom.teacherId.toString() !== user.assistantTeacherId.toString()) {
+        return res.status(403).json({ message: 'Assistant can only join classrooms of linked teacher' });
+      }
+
+      if (classroom.assistantIds.some((id) => id.toString() === user._id.toString())) {
+        return res.status(400).json({ message: 'Already joined' });
+      }
+
+      classroom.assistantIds.push(user._id);
+      await classroom.save();
+      return res.json({ message: 'Joined successfully' });
+    }
+
+    return res.status(403).json({ message: 'Only students and assistants can join classrooms' });
+
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

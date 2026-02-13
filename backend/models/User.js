@@ -25,6 +25,16 @@ const userSchema = new mongoose.Schema(
       enum: ['TEACHER', 'ASSISTANT', 'STUDENT'],
       default: 'STUDENT',
     },
+    assistantCodeHash: {
+      type: String,
+      select: false,
+    },
+    assistantTeacherId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,

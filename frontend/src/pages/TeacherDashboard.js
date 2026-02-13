@@ -1,28 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getClassrooms, createClassroom } from '../services/api';
+import { getClassrooms, createClassroom, getTeacherAssistants } from '../services/api';
 import CreateClassroomModal from '../components/CreateClassroomModal';
 
 const TeacherDashboard = () => {
   const [classrooms, setClassrooms] = useState([]);
+  const [assistants, setAssistants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  useEffect(() => {
-    fetchClassrooms();
-  }, []);
-
-  const fetchClassrooms = async () => {
+  const fetchClassrooms = useCallback(async () => {
     try {
       setLoading(true);
       const response = await getClassrooms();
-    const teacherClassrooms = response.data.filter(
-    (c) => c.teacherId.toString() === user._id
-    );
+      const teacherClassrooms = response.data.filter(
+        (c) => c.teacherId.toString() === user._id
+      );
 
       setClassrooms(teacherClassrooms);
       setError('');
@@ -31,7 +28,21 @@ const TeacherDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user._id]);
+
+  const fetchAssistants = useCallback(async () => {
+    try {
+      const response = await getTeacherAssistants(user._id);
+      setAssistants(response.data);
+    } catch (err) {
+      console.error('Failed to load assistants:', err);
+    }
+  }, [user._id]);
+
+  useEffect(() => {
+    fetchClassrooms();
+    fetchAssistants();
+  }, [fetchClassrooms, fetchAssistants]);
 
   const handleCreateClassroom = async (classroomData) => {
     try {
@@ -69,6 +80,27 @@ const TeacherDashboard = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Linked Assistants</h2>
+          {assistants.length === 0 ? (
+            <p className="text-gray-600">No assistants linked yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {assistants.map((assistant) => (
+                <div
+                  key={assistant._id}
+                  className="border border-gray-200 rounded-lg px-4 py-3 flex justify-between items-center"
+                >
+                  <div>
+                    <p className="font-semibold text-gray-900">{assistant.name}</p>
+                    <p className="text-sm text-gray-600">{assistant.email}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-3xl font-bold text-gray-900">My Classrooms</h2>
           <button
