@@ -2,6 +2,7 @@ const Classroom = require('../models/Classroom');
 const User = require('../models/User');
 
 const ROLE = {
+  ADMIN: 'ADMIN',
   TEACHER: 'TEACHER',
   ASSISTANT: 'ASSISTANT',
   STUDENT: 'STUDENT',
@@ -10,20 +11,22 @@ const ROLE = {
 // CREATE classroom (teacher)
 exports.createClassroom = async (req, res) => {
   try {
-    const teacher = await User.findOne({
-      _id: req.body.teacherId,
-      role: ROLE.TEACHER,
-    });
+    const teacher = req.body.teacherId
+      ? await User.findOne({ _id: req.body.teacherId, role: ROLE.TEACHER })
+      : null;
+    const admin = req.body.adminId
+      ? await User.findOne({ _id: req.body.adminId, role: ROLE.ADMIN })
+      : null;
 
-    if (!teacher) {
-      return res.status(403).json({ message: 'Only teachers can create classrooms' });
+    if (!teacher && !admin) {
+      return res.status(403).json({ message: 'Only teachers or admins can create classrooms' });
     }
 
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const classroom = await Classroom.create({
       name: req.body.name,
-      teacherId: teacher._id,
+      teacherId: teacher ? teacher._id : admin._id,
       joinCode,
     });
 

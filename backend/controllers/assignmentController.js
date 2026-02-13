@@ -3,6 +3,7 @@ const Classroom = require('../models/Classroom');
 const User = require('../models/User');
 
 const ROLE = {
+  ADMIN: 'ADMIN',
   TEACHER: 'TEACHER',
   ASSISTANT: 'ASSISTANT',
 };
@@ -27,6 +28,7 @@ exports.createAssignment = async (req, res) => {
       return res.status(404).json({ message: 'Creator not found' });
     }
 
+    const isAdmin = creator.role === ROLE.ADMIN;
     const isTeacherOfClassroom =
       creator.role === ROLE.TEACHER &&
       classroom.teacherId.toString() === creator._id.toString();
@@ -34,7 +36,7 @@ exports.createAssignment = async (req, res) => {
       creator.role === ROLE.ASSISTANT &&
       classroom.assistantIds.some((id) => id.toString() === creator._id.toString());
 
-    if (!isTeacherOfClassroom && !isAssistantInClassroom) {
+    if (!isAdmin && !isTeacherOfClassroom && !isAssistantInClassroom) {
       return res.status(403).json({ message: 'Not allowed to create assignment in this classroom' });
     }
 

@@ -2,6 +2,7 @@ const User = require('../models/User');
 const crypto = require('crypto');
 
 const ROLE = {
+  ADMIN: 'ADMIN',
   TEACHER: 'TEACHER',
   ASSISTANT: 'ASSISTANT',
   STUDENT: 'STUDENT',
@@ -146,6 +147,39 @@ exports.createTeacher = async (req, res) => {
         role: user.role,
       },
       assistantCode: code,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+// ADMIN CREATE ADMIN (ADMIN-ONLY VIA SECRET)
+exports.createAdmin = async (req, res) => {
+  try {
+    const adminSecret = req.header('x-admin-secret');
+    if (!process.env.ADMIN_SECRET || adminSecret !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ message: 'Admin authorization required' });
+    }
+
+    const { name, email, password } = req.body;
+
+    const exists = await User.findOne({ email });
+    if (exists) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      passwordHash: password,
+      role: ROLE.ADMIN,
+    });
+
+    res.status(201).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

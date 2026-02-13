@@ -5,6 +5,7 @@ const {
   register,
   registerAssistant,
   createTeacher,
+  createAdmin,
   login,
   getUsers,
   getUser,
@@ -15,6 +16,7 @@ const {
 router.post('/register', register);
 router.post('/register-assistant', registerAssistant);
 router.post('/teachers', createTeacher);
+router.post('/admins', createAdmin);
 router.post('/login', login);
 
 // Users
