@@ -108,7 +108,23 @@ const SubmitAssignmentPage = () => {
     navigate('/');
   };
 
-  const handleDownloadFeedback = () => {
+  const loadImageAsDataUrl = (src) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = reject;
+      img.src = src;
+    });
+
+  const handleDownloadFeedback = async () => {
     if (!result) {
       return;
     }
@@ -119,45 +135,83 @@ const SubmitAssignmentPage = () => {
     const margin = 16;
     let y = 20;
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text('Assignment Feedback', margin, y);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, pageWidth, 38, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.line(0, 38, pageWidth, 38);
 
-    y += 10;
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Student: ${user?.name || 'N/A'}`, margin, y);
-
-    y += 6;
-    if (assignment?.title) {
-      doc.text(`Assignment: ${assignment.title}`, margin, y);
-      y += 6;
+    try {
+      const logoDataUrl = await loadImageAsDataUrl(logo);
+      doc.addImage(logoDataUrl, 'PNG', margin, 10, 16, 16);
+    } catch (err) {
+      // If logo fails, continue without it.
     }
 
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Assignment Feedback', margin + 22, 20);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Sa7a7ly', margin + 22, 28);
+
+    y = 50;
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, 24, 3, 3, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Student', margin + 4, y + 9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(user?.name || 'N/A', margin + 4, y + 18);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Assignment', margin + 80, y + 9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(assignment?.title || 'N/A', margin + 80, y + 18);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Grade', pageWidth - margin - 26, y + 9);
+    doc.setFont('helvetica', 'normal');
     doc.text(
-      `Grade: ${result.grade}${
+      `${result.grade}${
         assignment?.totalPoints != null ? ` / ${assignment.totalPoints}` : ''
       }`,
-      margin,
-      y
+      pageWidth - margin - 26,
+      y + 18
     );
 
-    y += 10;
+    y += 34;
     doc.setFont('helvetica', 'bold');
-    doc.text('Feedback', margin, y);
+    doc.setFontSize(12);
+    doc.text('Feedback Summary', margin, y);
 
     y += 6;
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, pageHeight - y - margin, 3, 3, 'S');
+
+    y += 8;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
     const feedbackLines = doc.splitTextToSize(
       result.feedback || 'No feedback provided.',
-      pageWidth - margin * 2
+      pageWidth - margin * 2 - 8
     );
     feedbackLines.forEach((line) => {
-      if (y > pageHeight - margin) {
+      if (y > pageHeight - margin - 6) {
         doc.addPage();
-        y = margin;
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(
+          margin,
+          margin,
+          pageWidth - margin * 2,
+          pageHeight - margin * 2,
+          3,
+          3,
+          'S'
+        );
+        y = margin + 8;
       }
-      doc.text(line, margin, y);
+      doc.text(line, margin + 4, y);
       y += 6;
     });
 
