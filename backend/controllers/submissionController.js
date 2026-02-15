@@ -3,6 +3,7 @@ const axios = require("axios");
 const crypto = require("crypto");
 const Submission = require("../models/Submission");
 const Assignment = require("../models/Assignment");
+const ResubmissionRequest = require("../models/ResubmissionRequest");
 
 const GEMINI_URL =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
@@ -49,6 +50,33 @@ exports.submitAssignment = async(req, res) => {
             return res.status(404).json({ message: "Assignment not found" });
         }
 
+        if (assignment.dueDate && new Date() > new Date(assignment.dueDate)) {
+            return res.status(400).json({ message: "Submission is closed. The due date has passed." });
+        }
+
+        const existingSubmission = await Submission.findOne({
+            assignmentId,
+            studentId,
+        }).sort({ submittedAt: -1 });
+
+        const latestRequest = await ResubmissionRequest.findOne({
+            assignmentId,
+            studentId,
+        }).sort({ createdAt: -1 });
+
+        if (
+            existingSubmission &&
+            (!latestRequest ||
+                latestRequest.status !== "APPROVED" ||
+                latestRequest.used)
+        ) {
+            return res.status(200).json({
+                submission: existingSubmission,
+                alreadySubmitted: true,
+                resubmissionRequest: latestRequest || null,
+            });
+        }
+
         const studentPdf = fs.readFileSync(req.file.path);
         const modelPdf = fs.readFileSync(assignment.modelAnswerPdfPath);
 
@@ -72,7 +100,17 @@ exports.submitAssignment = async(req, res) => {
                 gradedAt: new Date(),
             });
 
-            return res.status(201).json(submission);
+            if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
+                latestRequest.used = true;
+                latestRequest.usedAt = new Date();
+                await latestRequest.save();
+            }
+
+            return res.status(201).json({
+                submission,
+                alreadySubmitted: false,
+                resubmissionRequest: latestRequest || null,
+            });
         }
 
         // 🔥 STRICT PROMPT
@@ -223,8 +261,17 @@ ONLY return pure JSON.
             feedback: feedbackText.trim(),
             gradedAt: new Date(),
         });
+        if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
+            latestRequest.used = true;
+            latestRequest.usedAt = new Date();
+            await latestRequest.save();
+        }
 
-        res.status(201).json(submission);
+        res.status(201).json({
+            submission,
+            alreadySubmitted: false,
+            resubmissionRequest: latestRequest || null,
+        });
     } catch (err) {
         console.error(
             "SUBMISSION ERROR:",
@@ -265,4 +312,27 @@ exports.getSubmission = async(req, res) => {
     }
 
     res.json(submission);
+};
+
+// GET latest submission for a student + assignment
+exports.getStudentSubmission = async (req, res) => {
+    try {
+        const { assignmentId, studentId } = req.query;
+        if (!assignmentId || !studentId) {
+            return res.status(400).json({ message: "Assignment and student are required" });
+        }
+
+        const submission = await Submission.findOne({ assignmentId, studentId })
+            .sort({ submittedAt: -1 })
+            .populate("assignmentId", "title totalPoints dueDate");
+
+        const resubmissionRequest = await ResubmissionRequest.findOne({
+            assignmentId,
+            studentId,
+        }).sort({ createdAt: -1 });
+
+        res.json({ submission: submission || null, resubmissionRequest: resubmissionRequest || null });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 };

@@ -237,12 +237,20 @@ const TeacherDashboard = () => {
                   My Classrooms
                 </h2>
               </div>
-              <button
-                onClick={() => setShowModal(true)}
-                className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
-              >
-                Create Classroom
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  onClick={() => navigate('/resubmission-requests')}
+                  className="px-5 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
+                >
+                  Resubmission Requests
+                </button>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
+                >
+                  Create Classroom
+                </button>
+              </div>
             </div>
 
         {error && (

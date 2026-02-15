@@ -69,4 +69,16 @@ export const submitAssignment = (formData) =>
 export const getSubmissions = (assignmentId) =>
   API.get(`/submissions?assignmentId=${assignmentId}`);
 
+export const getStudentSubmission = (assignmentId, studentId) =>
+  API.get(`/submissions/by-student?assignmentId=${assignmentId}&studentId=${studentId}`);
+
+export const createResubmissionRequest = (data) =>
+  API.post('/resubmissions', data);
+
+export const getResubmissionRequests = (userId, status) =>
+  API.get(`/resubmissions?userId=${userId}${status ? `&status=${status}` : ''}`);
+
+export const updateResubmissionRequest = (id, data) =>
+  API.patch(`/resubmissions/${id}`, data);
+
 export default API;

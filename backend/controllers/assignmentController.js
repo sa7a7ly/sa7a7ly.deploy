@@ -40,6 +40,7 @@ exports.createAssignment = async (req, res) => {
       return res.status(403).json({ message: 'Not allowed to create assignment in this classroom' });
     }
 
+    const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
     const assignment = await Assignment.create({
       classroomId: req.body.classroomId,
       title: req.body.title,
@@ -47,6 +48,7 @@ exports.createAssignment = async (req, res) => {
       modelAnswerPdfPath: req.file.path,
       modelAnswerText: req.body.modelAnswerText,
       totalPoints: req.body.totalPoints || 100,
+      dueDate: dueDateValue && !Number.isNaN(dueDateValue.getTime()) ? dueDateValue : null,
       createdBy: req.body.createdBy,
     });
 
@@ -71,6 +73,7 @@ exports.getAssignments = async (req, res) => {
     }
 
     const assignments = await Assignment.find(query);
+    res.set('x-server-time', Date.now().toString());
     res.json(assignments);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -82,6 +85,7 @@ exports.getAssignment = async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id);
     if (!assignment) return res.status(404).json({ message: 'Not found' });
+    res.set('x-server-time', Date.now().toString());
     res.json(assignment);
   } catch (err) {
     res.status(400).json({ message: err.message });

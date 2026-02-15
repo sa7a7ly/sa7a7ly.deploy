@@ -30,6 +30,10 @@ const assignmentSchema = new mongoose.Schema(
       default: 100,
       min: 0,
     },
+    dueDate: {
+      type: Date,
+      default: null,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

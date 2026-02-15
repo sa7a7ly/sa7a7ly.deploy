@@ -1,7 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { submitAssignment, getAssignmentById } from '../services/api';
+import {
+  submitAssignment,
+  getAssignmentById,
+  getStudentSubmission,
+  createResubmissionRequest,
+} from '../services/api';
 import { jsPDF } from 'jspdf';
 import logo from '../images/image.png';
 
@@ -15,6 +20,12 @@ const SubmitAssignmentPage = () => {
   const [result, setResult] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [timeOffsetMs, setTimeOffsetMs] = useState(0);
+  const [resubmissionRequest, setResubmissionRequest] = useState(null);
+  const [resubmitReason, setResubmitReason] = useState('');
+  const [requestingResubmit, setRequestingResubmit] = useState(false);
+  const [existingSubmission, setExistingSubmission] = useState(null);
+  const [infoMessage, setInfoMessage] = useState('');
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -25,14 +36,46 @@ const SubmitAssignmentPage = () => {
         const response = await getAssignmentById(assignmentId);
         if (isMounted) {
           setAssignment(response.data);
+          const serverTime = response.headers['x-server-time'];
+          if (serverTime) {
+            setTimeOffsetMs(Number(serverTime) - Date.now());
+          }
         }
       } catch (_) {
         // If this fails, we can still show the grade without max points.
       }
     };
 
+    const loadExistingSubmission = async () => {
+      try {
+        const response = await getStudentSubmission(assignmentId, user?._id);
+        if (!isMounted) {
+          return;
+        }
+        const submission = response.data?.submission || null;
+        const latestRequest = response.data?.resubmissionRequest || null;
+        setExistingSubmission(submission);
+        setResubmissionRequest(latestRequest);
+
+        if (
+          submission &&
+          (!latestRequest ||
+            latestRequest.status !== 'APPROVED' ||
+            latestRequest.used)
+        ) {
+          setResult(submission);
+          setInfoMessage('Submission already received. Showing your feedback.');
+        }
+      } catch (_) {
+        // Ignore if no submission found.
+      }
+    };
+
     if (assignmentId) {
       loadAssignment();
+      if (user?._id) {
+        loadExistingSubmission();
+      }
     }
 
     return () => {
@@ -94,7 +137,15 @@ const SubmitAssignmentPage = () => {
       formData.append('studentId', user._id);
 
       const response = await submitAssignment(formData);
-      setResult(response.data);
+      const payload = response.data?.submission ? response.data : { submission: response.data };
+      if (payload.alreadySubmitted) {
+        setInfoMessage('Submission already received. Showing your feedback.');
+      } else {
+        setInfoMessage('');
+      }
+      setResult(payload.submission);
+      setResubmissionRequest(payload.resubmissionRequest || null);
+      setExistingSubmission(payload.submission);
       setPdf(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to submit assignment');
@@ -106,6 +157,71 @@ const SubmitAssignmentPage = () => {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const isPastDue = assignment?.dueDate
+    ? new Date(assignment.dueDate).getTime() - (Date.now() + timeOffsetMs) <= 0
+    : false;
+
+  const canSubmit =
+    !isPastDue &&
+    (!existingSubmission ||
+      (resubmissionRequest?.status === 'APPROVED' && !resubmissionRequest.used));
+
+  const handleRequestResubmission = async () => {
+    if (!resubmitReason.trim()) {
+      setError('Please provide a reason for resubmission');
+      return;
+    }
+    setRequestingResubmit(true);
+    setError('');
+    try {
+      const response = await createResubmissionRequest({
+        assignmentId,
+        studentId: user._id,
+        reason: resubmitReason.trim(),
+      });
+      setResubmissionRequest(response.data);
+      setResubmitReason('');
+      setInfoMessage('Resubmission request sent. Awaiting approval.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to request resubmission');
+    } finally {
+      setRequestingResubmit(false);
+    }
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) {
+      return 'No deadline';
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'No deadline' : date.toLocaleString();
+  };
+
+  const getTimeLeft = (value) => {
+    if (!value) {
+      return 'No deadline';
+    }
+    const due = new Date(value).getTime();
+    if (Number.isNaN(due)) {
+      return 'No deadline';
+    }
+    const diff = due - (Date.now() + timeOffsetMs);
+    if (diff <= 0) {
+      return 'Past due';
+    }
+    const minutes = Math.floor(diff / 60000);
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    const mins = minutes % 60;
+    if (days > 0) {
+      return `${days}d ${hours}h left`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${mins}m left`;
+    }
+    return `${mins}m left`;
   };
 
   const loadImageAsDataUrl = (src) =>
@@ -277,6 +393,11 @@ const SubmitAssignmentPage = () => {
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            {infoMessage && (
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
+                {infoMessage}
+              </div>
+            )}
             <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
@@ -300,6 +421,11 @@ const SubmitAssignmentPage = () => {
               </div>
             </div>
 
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
+              <p>Due: {formatDateTime(assignment?.dueDate)}</p>
+              <p>Time left: {getTimeLeft(assignment?.dueDate)}</p>
+            </div>
+
             {result.uploadedPdf && (
               <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
@@ -316,7 +442,60 @@ const SubmitAssignmentPage = () => {
               </div>
             )}
 
+            {resubmissionRequest?.status === 'PENDING' && (
+              <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-6 text-sky-700">
+                Resubmission request pending approval.
+              </div>
+            )}
+            {resubmissionRequest?.status === 'DECLINED' && (
+              <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+                Resubmission request declined.
+              </div>
+            )}
+            {resubmissionRequest?.status === 'APPROVED' && !resubmissionRequest.used && (
+              <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-700">
+                Resubmission approved. You can submit a new version.
+              </div>
+            )}
+
+            {(!resubmissionRequest ||
+              resubmissionRequest.status === 'DECLINED' ||
+              (resubmissionRequest.status === 'APPROVED' &&
+                resubmissionRequest.used)) && (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Request Resubmission
+                </p>
+                <textarea
+                  value={resubmitReason}
+                  onChange={(e) => setResubmitReason(e.target.value)}
+                  rows={4}
+                  className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Explain why you need to resubmit..."
+                />
+                <button
+                  onClick={handleRequestResubmission}
+                  disabled={requestingResubmit}
+                  className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {requestingResubmit ? 'Sending...' : 'Send Request'}
+                </button>
+              </div>
+            )}
+
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              {resubmissionRequest?.status === 'APPROVED' &&
+                !resubmissionRequest.used && (
+                  <button
+                    onClick={() => {
+                      setResult(null);
+                      setInfoMessage('');
+                    }}
+                    className="px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
+                  >
+                    Submit New Version
+                  </button>
+                )}
               <button
                 onClick={handleDownloadFeedback}
                 className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
@@ -389,7 +568,33 @@ const SubmitAssignmentPage = () => {
           </div>
         </div>
 
+        {assignment && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
+            <p>Due: {formatDateTime(assignment.dueDate)}</p>
+            <p>Time left: {getTimeLeft(assignment.dueDate)}</p>
+          </div>
+        )}
+
+        {existingSubmission &&
+          resubmissionRequest?.status !== 'APPROVED' &&
+          !resubmissionRequest?.used && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-700">
+              Submission already received. View your feedback above.
+            </div>
+          )}
+
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+          {isPastDue && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              Submission is closed. The due date has passed.
+            </div>
+          )}
+          {!isPastDue && !canSubmit && (
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
+              You have already submitted this assignment. Request a resubmission
+              if you need to submit again.
+            </div>
+          )}
           <form onSubmit={handleSubmit}>
             <div
               onDragEnter={handleDrag}
@@ -401,7 +606,11 @@ const SubmitAssignmentPage = () => {
                   ? 'border-emerald-600 bg-emerald-50'
                   : 'border-slate-300 hover:border-emerald-500'
               }`}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                if (canSubmit) {
+                  fileInputRef.current?.click();
+                }
+              }}
             >
               <div className="mb-4 text-4xl">📤</div>
               <p className="text-lg font-semibold text-slate-900 mb-2">
@@ -413,6 +622,7 @@ const SubmitAssignmentPage = () => {
                 type="file"
                 accept=".pdf"
                 onChange={handleFileChange}
+                disabled={!canSubmit}
                 className="hidden"
               />
             </div>
@@ -432,7 +642,7 @@ const SubmitAssignmentPage = () => {
 
             <button
               type="submit"
-              disabled={loading || !pdf}
+              disabled={loading || !pdf || !canSubmit}
               className="w-full mt-8 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold disabled:opacity-50"
             >
               {loading ? 'Submitting...' : 'Submit Assignment'}

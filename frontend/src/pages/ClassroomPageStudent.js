@@ -10,6 +10,7 @@ const ClassroomPageStudent = () => {
   const { user, logout } = useAuth();
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [timeOffsetMs, setTimeOffsetMs] = useState(0);
 
   useEffect(() => {
     fetchAssignments();
@@ -20,6 +21,10 @@ const ClassroomPageStudent = () => {
       setLoading(true);
       const response = await getAssignments(classroomId);
       setAssignments(response.data);
+      const serverTime = response.headers['x-server-time'];
+      if (serverTime) {
+        setTimeOffsetMs(Number(serverTime) - Date.now());
+      }
     } catch (err) {
       console.error('Failed to load assignments:', err);
     } finally {
@@ -30,6 +35,39 @@ const ClassroomPageStudent = () => {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) {
+      return 'No deadline';
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'No deadline' : date.toLocaleString();
+  };
+
+  const getTimeLeft = (value) => {
+    if (!value) {
+      return 'No deadline';
+    }
+    const due = new Date(value).getTime();
+    if (Number.isNaN(due)) {
+      return 'No deadline';
+    }
+    const diff = due - (Date.now() + timeOffsetMs);
+    if (diff <= 0) {
+      return 'Past due';
+    }
+    const minutes = Math.floor(diff / 60000);
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    const mins = minutes % 60;
+    if (days > 0) {
+      return `${days}d ${hours}h left`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${mins}m left`;
+    }
+    return `${mins}m left`;
   };
 
   return (
@@ -150,6 +188,10 @@ const ClassroomPageStudent = () => {
                   <p className="mt-2 text-slate-600">
                     {assignment.description}
                   </p>
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    <p>Due: {formatDateTime(assignment.dueDate)}</p>
+                    <p>Time left: {getTimeLeft(assignment.dueDate)}</p>
+                  </div>
                   <button
                     onClick={() =>
                       navigate(`/submit-assignment/${assignment._id}`)

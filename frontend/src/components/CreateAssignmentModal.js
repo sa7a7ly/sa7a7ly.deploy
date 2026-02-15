@@ -6,6 +6,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     description: '',
     totalPoints: '',
     pdf: null,
+    dueDate: '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +35,9 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     formDataToSend.append('totalPoints', formData.totalPoints);
     formDataToSend.append('classroomId', classroomId);
     formDataToSend.append('createdBy', userId);
+    if (formData.dueDate) {
+      formDataToSend.append('dueDate', formData.dueDate);
+    }
     if (formData.pdf) {
       formDataToSend.append('pdf', formData.pdf);
     }
@@ -112,6 +116,22 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="100"
             />
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">
+              Due Date (Server Time)
+            </label>
+            <input
+              type="datetime-local"
+              name="dueDate"
+              value={formData.dueDate}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="mt-2 text-sm text-slate-500">
+              Students will see the deadline and time left.
+            </p>
           </div>
 
           <div>

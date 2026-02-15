@@ -5,6 +5,7 @@ const submissionController = require('../controllers/submissionController');
 
 router.post('/', uploadSubmission.single('pdf'), submissionController.submitAssignment);
 router.get('/', submissionController.getSubmissions);
+router.get('/by-student', submissionController.getStudentSubmission);
 router.get('/:id', submissionController.getSubmission);
 
 module.exports = router;
