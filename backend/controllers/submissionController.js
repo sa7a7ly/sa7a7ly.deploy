@@ -292,11 +292,17 @@ ONLY return pure JSON.
 
 // GET submissions
 exports.getSubmissions = async(req, res) => {
-    const query = req.query.assignmentId ? { assignmentId: req.query.assignmentId } : {};
+    const query = {};
+    if (req.query.assignmentId) {
+        query.assignmentId = req.query.assignmentId;
+    }
+    if (req.query.studentId) {
+        query.studentId = req.query.studentId;
+    }
 
     const submissions = await Submission.find(query)
         .populate("studentId", "name email")
-        .populate("assignmentId", "title");
+        .populate("assignmentId", "title totalPoints dueDate");
 
     res.json(submissions);
 };

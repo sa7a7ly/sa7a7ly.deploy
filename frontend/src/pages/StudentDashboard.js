@@ -166,6 +166,13 @@ const StudentDashboard = () => {
             <p className="mt-3 text-sm text-slate-600">
               {t('classroom.joinAClassroom')}
             </p>
+            <button
+              type="button"
+              onClick={() => navigate('/student-progress')}
+              className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+            >
+              {t('progress.title')}
+            </button>
             <form
               onSubmit={handleJoinClassroom}
               className="mt-5 flex flex-col gap-3 sm:flex-row"

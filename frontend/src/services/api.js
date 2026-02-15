@@ -79,6 +79,9 @@ export const submitAssignment = (formData) =>
 export const getSubmissions = (assignmentId) =>
   API.get(`/submissions?assignmentId=${assignmentId}`);
 
+export const getStudentSubmissions = (studentId) =>
+  API.get(`/submissions?studentId=${studentId}`);
+
 export const getStudentSubmission = (assignmentId, studentId) =>
   API.get(`/submissions/by-student?assignmentId=${assignmentId}&studentId=${studentId}`);
 

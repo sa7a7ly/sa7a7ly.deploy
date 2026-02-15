@@ -22,6 +22,7 @@ import StudentDashboard from './pages/StudentDashboard';
 import ClassroomPageStudent from './pages/ClassroomPageStudent';
 import SubmitAssignmentPage from './pages/SubmitAssignmentPage';
 import ResubmissionRequestsPage from './pages/ResubmissionRequestsPage';
+import StudentProgressPage from './pages/StudentProgressPage';
 
 import './index.css';
 
@@ -100,6 +101,14 @@ function App() {
             element={
               <PrivateRoute requiredRole="STUDENT">
                 <StudentDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/student-progress"
+            element={
+              <PrivateRoute requiredRole="STUDENT">
+                <StudentProgressPage />
               </PrivateRoute>
             }
           />
