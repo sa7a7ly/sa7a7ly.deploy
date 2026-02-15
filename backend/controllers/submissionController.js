@@ -55,12 +55,17 @@ function parseCloudinaryAsset(urlString) {
         }
         if (!publicIdParts.length) return null;
 
-        const last = publicIdParts[publicIdParts.length - 1];
-        publicIdParts[publicIdParts.length - 1] = last.replace(/\.pdf$/i, "");
         return { type, publicId: publicIdParts.join("/") };
     } catch {
         return null;
     }
+}
+
+function getPublicIdCandidates(publicId) {
+    if (!publicId) return [];
+    const withExt = /\.pdf$/i.test(publicId) ? publicId : `${publicId}.pdf`;
+    const withoutExt = publicId.replace(/\.pdf$/i, "");
+    return Array.from(new Set([withExt, withoutExt]));
 }
 
 async function getPdfBuffer(source, fallbackBuffer) {
@@ -82,19 +87,30 @@ async function getPdfBuffer(source, fallbackBuffer) {
                     : null;
 
             if (cloudinaryAsset) {
-                const signedUrl = cloudinary.utils.private_download_url(
-                    cloudinaryAsset.publicId,
-                    "pdf",
-                    {
-                        resource_type: "raw",
-                        type: cloudinaryAsset.type,
-                        expires_at: Math.floor(Date.now() / 1000) + 300,
+                let lastError = err;
+                const candidates = getPublicIdCandidates(cloudinaryAsset.publicId);
+
+                for (const candidate of candidates) {
+                    try {
+                        const signedUrl = cloudinary.utils.private_download_url(
+                            candidate,
+                            "pdf",
+                            {
+                                resource_type: "raw",
+                                type: cloudinaryAsset.type,
+                                expires_at: Math.floor(Date.now() / 1000) + 300,
+                            }
+                        );
+                        const signedResponse = await axios.get(signedUrl, {
+                            responseType: "arraybuffer",
+                        });
+                        return Buffer.from(signedResponse.data);
+                    } catch (candidateErr) {
+                        lastError = candidateErr;
                     }
-                );
-                const signedResponse = await axios.get(signedUrl, {
-                    responseType: "arraybuffer",
-                });
-                return Buffer.from(signedResponse.data);
+                }
+
+                throw lastError;
             }
 
             throw err;
