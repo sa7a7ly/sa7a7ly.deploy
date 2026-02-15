@@ -85,6 +85,20 @@ exports.getClassroom = async (req, res) => {
   }
 };
 
+// GET classroom students
+exports.getClassroomStudents = async (req, res) => {
+  try {
+    const classroom = await Classroom.findById(req.params.id)
+      .populate('studentIds', 'name email role');
+
+    if (!classroom) return res.status(404).json({ message: 'Not found' });
+
+    res.json(classroom.studentIds || []);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
 // UPDATE classroom
 exports.updateClassroom = async (req, res) => {
   try {

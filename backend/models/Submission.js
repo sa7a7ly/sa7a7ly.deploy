@@ -34,6 +34,18 @@ const submissionSchema = new mongoose.Schema(
       default: '',
     },
 
+    submittedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    submittedByRole: {
+      type: String,
+      enum: ['STUDENT', 'TEACHER', 'ASSISTANT'],
+      default: 'STUDENT',
+    },
+
     gradedAt: {
       type: Date,
       default: null,

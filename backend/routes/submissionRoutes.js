@@ -8,6 +8,7 @@ const { authenticateToken } = require('../middleware/authMiddleware');
 router.use(authenticateToken);
 
 router.post('/', uploadSubmission.single('pdf'), subscriptionGuard, submissionController.submitAssignment);
+router.post('/on-behalf', uploadSubmission.single('pdf'), subscriptionGuard, submissionController.submitAssignmentOnBehalf);
 router.get('/', submissionController.getSubmissions);
 router.get('/by-student', submissionController.getStudentSubmission);
 router.get('/:id', submissionController.getSubmission);

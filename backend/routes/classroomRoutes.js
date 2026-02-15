@@ -11,6 +11,7 @@ router.post('/join', classroomController.joinClassroom);
 router.post('/', requireRole('ADMIN', 'TEACHER'), subscriptionGuard, classroomController.createClassroom);
 router.get('/', classroomController.getClassrooms);
 router.get('/:id', classroomController.getClassroom);
+router.get('/:id/students', classroomController.getClassroomStudents);
 router.put('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), classroomController.updateClassroom);
 router.delete('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), classroomController.deleteClassroom);
 

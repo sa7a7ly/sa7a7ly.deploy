@@ -23,6 +23,7 @@ import ClassroomPageStudent from './pages/ClassroomPageStudent';
 import SubmitAssignmentPage from './pages/SubmitAssignmentPage';
 import ResubmissionRequestsPage from './pages/ResubmissionRequestsPage';
 import StudentProgressPage from './pages/StudentProgressPage';
+import ClassroomSubmissionsPage from './pages/ClassroomSubmissionsPage';
 
 import './index.css';
 
@@ -73,6 +74,14 @@ function App() {
             element={
               <PrivateRoute requiredRole={['TEACHER', 'ASSISTANT']}>
                 <ClassroomPageTeacher />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/classroom/:classroomId/submissions"
+            element={
+              <PrivateRoute requiredRole={['TEACHER', 'ASSISTANT']}>
+                <ClassroomSubmissionsPage />
               </PrivateRoute>
             }
           />

@@ -232,13 +232,21 @@ const ClassroomPageTeacher = () => {
                   {t('classroom.manageAssignments')}
                 </h2>
               </div>
-              <button
-                onClick={() => setShowModal(true)}
-                className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
-                disabled={!canManage}
-              >
-                {t('classroom.createAssignment')}
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  onClick={() => navigate(`/classroom/${classroomId}/submissions`)}
+                  className="px-5 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
+                >
+                  {t('common.submissions')}
+                </button>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
+                  disabled={!canManage}
+                >
+                  {t('classroom.createAssignment')}
+                </button>
+              </div>
             </div>
 
         {loading ? (

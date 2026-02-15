@@ -37,6 +37,11 @@ export const joinClassroom = (data) =>
 export const getClassrooms = () =>
   API.get('/classrooms');
 
+export const getClassroom = (id) =>
+  API.get(`/classrooms/${id}`);
+
+export const getClassroomStudents = (id) =>
+  API.get(`/classrooms/${id}/students`);
 export const getUsers = () =>
   API.get('/users');
 
@@ -85,8 +90,20 @@ export const submitAssignment = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
-export const getSubmissions = (assignmentId) =>
-  API.get(`/submissions?assignmentId=${assignmentId}`);
+export const submitAssignmentOnBehalf = (formData) =>
+  API.post('/submissions/on-behalf', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+export const getSubmissions = (assignmentId, classroomId) => {
+  if (classroomId) {
+    return API.get(`/submissions?classroomId=${classroomId}`);
+  }
+  if (assignmentId) {
+    return API.get(`/submissions?assignmentId=${assignmentId}`);
+  }
+  return API.get('/submissions');
+};
 
 export const getStudentSubmissions = (studentId) =>
   API.get(`/submissions?studentId=${studentId}`);
