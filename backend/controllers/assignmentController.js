@@ -80,13 +80,20 @@ exports.createAssignment = async (req, res) => {
 exports.getAssignments = async (req, res) => {
   try {
     const { classroomId } = req.query;
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+    const skip = (page - 1) * limit;
     
     let query = {};
     if (classroomId) {
       query.classroomId = classroomId;
     }
 
-    const assignments = await Assignment.find(query);
+    const total = await Assignment.countDocuments(query);
+    const assignments = await Assignment.find(query).skip(skip).limit(limit);
+    res.set('X-Total-Count', total.toString());
+    res.set('X-Page', page.toString());
+    res.set('X-Limit', limit.toString());
     res.set('x-server-time', Date.now().toString());
     res.json(assignments);
   } catch (err) {

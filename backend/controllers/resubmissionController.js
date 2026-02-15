@@ -78,12 +78,22 @@ exports.getResubmissionRequests = async (req, res) => {
       query.status = status;
     }
 
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+    const skip = (page - 1) * limit;
+    const total = await ResubmissionRequest.countDocuments(query);
+
     const requests = await ResubmissionRequest.find(query)
       .populate('assignmentId', 'title dueDate')
       .populate('studentId', 'name email')
       .populate('submissionId', 'grade submittedAt')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
+    res.set('X-Total-Count', total.toString());
+    res.set('X-Page', page.toString());
+    res.set('X-Limit', limit.toString());
     res.json(requests);
   } catch (err) {
     res.status(500).json({ message: err.message });

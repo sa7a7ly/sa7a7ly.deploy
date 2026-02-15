@@ -24,6 +24,7 @@ import SubmitAssignmentPage from './pages/SubmitAssignmentPage';
 import ResubmissionRequestsPage from './pages/ResubmissionRequestsPage';
 import StudentProgressPage from './pages/StudentProgressPage';
 import ClassroomSubmissionsPage from './pages/ClassroomSubmissionsPage';
+import GradeOnBehalfPage from './pages/GradeOnBehalfPage';
 
 import './index.css';
 
@@ -82,6 +83,14 @@ function App() {
             element={
               <PrivateRoute requiredRole={['TEACHER', 'ASSISTANT']}>
                 <ClassroomSubmissionsPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/classroom/:classroomId/grade-on-behalf"
+            element={
+              <PrivateRoute requiredRole={['TEACHER', 'ASSISTANT']}>
+                <GradeOnBehalfPage />
               </PrivateRoute>
             }
           />

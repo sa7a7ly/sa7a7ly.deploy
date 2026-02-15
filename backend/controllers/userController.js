@@ -297,16 +297,31 @@ exports.login = async (req, res) => {
 exports.getTeacherAssistants = async (req, res) => {
   try {
     const { teacherId } = req.params;
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+    const skip = (page - 1) * limit;
 
     const teacher = await User.findOne({ _id: teacherId, role: ROLE.TEACHER });
     if (!teacher) {
       return res.status(404).json({ message: 'Teacher not found' });
     }
 
+    const total = await User.countDocuments({
+      role: ROLE.ASSISTANT,
+      assistantTeacherId: teacherId,
+    });
+
     const assistants = await User.find({
       role: ROLE.ASSISTANT,
       assistantTeacherId: teacherId,
-    }).select('name email role assistantTeacherId createdAt');
+    })
+      .select('name email role assistantTeacherId createdAt')
+      .skip(skip)
+      .limit(limit);
+
+    res.set('X-Total-Count', total.toString());
+    res.set('X-Page', page.toString());
+    res.set('X-Limit', limit.toString());
 
     res.json(assistants);
   } catch (err) {
@@ -339,8 +354,15 @@ exports.getTeacherAssistantCode = async (req, res) => {
 
 // GET all users
 exports.getUsers = async (req, res) => {
-  const users = await User.find();
+  const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+  const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+  const skip = (page - 1) * limit;
+  const total = await User.countDocuments();
+  const users = await User.find().skip(skip).limit(limit);
   await Promise.all(users.map((u) => refreshTeacherSubscriptionStatus(u)));
+  res.set('X-Total-Count', total.toString());
+  res.set('X-Page', page.toString());
+  res.set('X-Limit', limit.toString());
   res.json(users);
 };
 

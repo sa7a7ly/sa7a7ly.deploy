@@ -2,11 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  getAssignments,
   getClassroom,
-  getClassroomStudents,
   getSubmissions,
-  submitAssignmentOnBehalf,
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import logo from '../images/image.png';
@@ -17,33 +14,21 @@ const ClassroomSubmissionsPage = () => {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [classroom, setClassroom] = useState(null);
-  const [assignments, setAssignments] = useState([]);
-  const [students, setStudents] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [formData, setFormData] = useState({
-    assignmentId: '',
-    studentId: '',
-    pdf: null,
-  });
   const [openFeedback, setOpenFeedback] = useState({});
 
   const fetchData = async () => {
     try {
       setLoading(true);
-        const [classroomRes, assignmentsRes, studentsRes, submissionsRes] =
-          await Promise.all([
-            getClassroom(classroomId),
-            getAssignments(classroomId),
-            getClassroomStudents(classroomId),
-            getSubmissions(undefined, classroomId),
-          ]);
+      const [classroomRes, submissionsRes] =
+        await Promise.all([
+          getClassroom(classroomId),
+          getSubmissions(undefined, classroomId),
+        ]);
 
       setClassroom(classroomRes.data);
-      setAssignments(assignmentsRes.data || []);
-      setStudents(studentsRes.data || []);
       setSubmissions(submissionsRes.data || []);
       setError('');
     } catch (err) {
@@ -64,44 +49,6 @@ const ClassroomSubmissionsPage = () => {
     navigate('/');
   };
 
-  const handleChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    setFormData((prev) => ({
-      ...prev,
-      pdf: file || null,
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.assignmentId || !formData.studentId || !formData.pdf) {
-      setError(t('common.uploadPdf'));
-      return;
-    }
-    try {
-      setSubmitting(true);
-      setError('');
-      const payload = new FormData();
-      payload.append('assignmentId', formData.assignmentId);
-      payload.append('studentId', formData.studentId);
-      payload.append('submittedBy', user._id);
-      payload.append('pdf', formData.pdf);
-      await submitAssignmentOnBehalf(payload);
-      setFormData({ assignmentId: '', studentId: '', pdf: null });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const groupedSubmissions = useMemo(() => {
     const grouped = {};
@@ -188,54 +135,6 @@ const ClassroomSubmissionsPage = () => {
           </div>
         </div>
 
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <h3 className="text-xl font-bold text-slate-900">
-            {t('common.gradeOnBehalf')}
-          </h3>
-          <p className="mt-2 text-sm text-slate-600">
-            {t('common.uploadPdf')}
-          </p>
-          <form onSubmit={handleSubmit} className="mt-4 grid gap-3 md:grid-cols-4">
-            <select
-              value={formData.studentId}
-              onChange={(e) => handleChange('studentId', e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            >
-              <option value="">{t('common.selectStudent')}</option>
-              {students.map((student) => (
-                <option key={student._id} value={student._id}>
-                  {student.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={formData.assignmentId}
-              onChange={(e) => handleChange('assignmentId', e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            >
-              <option value="">{t('common.selectAssignment')}</option>
-              {assignments.map((assignment) => (
-                <option key={assignment._id} value={assignment._id}>
-                  {assignment.title}
-                </option>
-              ))}
-            </select>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleFileChange}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {submitting ? t('common.loading') : t('classroom.submitAssignment')}
-            </button>
-          </form>
-        </section>
-
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
             {error}
@@ -267,7 +166,7 @@ const ClassroomSubmissionsPage = () => {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">
-                            {submission.studentId?.name || 'Student'}
+                            {submission.studentId?.name || submission.studentName || 'Student'}
                           </p>
                           <p className="text-xs text-slate-600">
                             {new Date(submission.submittedAt).toLocaleString()}

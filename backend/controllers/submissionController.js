@@ -304,13 +304,16 @@ ONLY return pure JSON.
 // Submit on behalf (teacher/assistant)
 exports.submitAssignmentOnBehalf = async (req, res) => {
     try {
-        const { assignmentId, studentId, submittedBy } = req.body;
+        const { assignmentId, studentId, studentName, submittedBy } = req.body;
+        const normalizedStudentName = (studentName || "").trim();
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
         }
-        if (!assignmentId || !studentId || !submittedBy) {
-            return res.status(400).json({ message: "assignmentId, studentId, submittedBy are required" });
+        if (!assignmentId || !submittedBy || (!studentId && !normalizedStudentName)) {
+            return res.status(400).json({
+                message: "assignmentId, submittedBy, and studentName are required",
+            });
         }
 
         const assignment = await Assignment.findById(assignmentId);
@@ -340,15 +343,13 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
         }
 
-        const existingSubmission = await Submission.findOne({
-            assignmentId,
-            studentId,
-        }).sort({ submittedAt: -1 });
+        const existingSubmission = studentId
+            ? await Submission.findOne({ assignmentId, studentId }).sort({ submittedAt: -1 })
+            : null;
 
-        const latestRequest = await ResubmissionRequest.findOne({
-            assignmentId,
-            studentId,
-        }).sort({ createdAt: -1 });
+        const latestRequest = studentId
+            ? await ResubmissionRequest.findOne({ assignmentId, studentId }).sort({ createdAt: -1 })
+            : null;
 
         if (
             existingSubmission &&
@@ -378,7 +379,8 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
         if (studentHash === modelHash) {
             const submission = await Submission.create({
                 assignmentId,
-                studentId,
+                studentId: studentId || null,
+                studentName: normalizedStudentName,
                 pdfPath: req.file.path,
                 grade: assignment.totalPoints,
                 feedback: "Identical to model answer. Full marks awarded.",
@@ -528,7 +530,8 @@ ONLY return pure JSON.
 
         const submission = await Submission.create({
             assignmentId,
-            studentId,
+            studentId: studentId || null,
+            studentName: normalizedStudentName,
             pdfPath: req.file.path,
             grade: result.totalGrade,
             feedback: feedbackText.trim(),
@@ -568,10 +571,19 @@ exports.getSubmissions = async(req, res) => {
         query.assignmentId = { $in: assignments.map((a) => a._id) };
     }
 
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+    const skip = (page - 1) * limit;
+    const total = await Submission.countDocuments(query);
+
     const submissions = await Submission.find(query)
         .populate("studentId", "name email")
-        .populate("assignmentId", "title totalPoints dueDate");
-
+        .populate("assignmentId", "title totalPoints dueDate")
+        .skip(skip)
+        .limit(limit);
+    res.set("X-Total-Count", total.toString());
+    res.set("X-Page", page.toString());
+    res.set("X-Limit", limit.toString());
     res.json(submissions);
 };
 

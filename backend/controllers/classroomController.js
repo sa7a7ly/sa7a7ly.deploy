@@ -63,7 +63,14 @@ exports.createClassroom = async (req, res) => {
 // GET all classrooms
 exports.getClassrooms = async (req, res) => {
   try {
-    const classrooms = await Classroom.find();
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+    const skip = (page - 1) * limit;
+    const total = await Classroom.countDocuments();
+    const classrooms = await Classroom.find().skip(skip).limit(limit);
+    res.set('X-Total-Count', total.toString());
+    res.set('X-Page', page.toString());
+    res.set('X-Limit', limit.toString());
     res.json(classrooms);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -88,12 +95,20 @@ exports.getClassroom = async (req, res) => {
 // GET classroom students
 exports.getClassroomStudents = async (req, res) => {
   try {
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const limit = Math.max(parseInt(req.query.limit || '8', 10), 1);
+    const skip = (page - 1) * limit;
     const classroom = await Classroom.findById(req.params.id)
       .populate('studentIds', 'name email role');
 
     if (!classroom) return res.status(404).json({ message: 'Not found' });
 
-    res.json(classroom.studentIds || []);
+    const total = (classroom.studentIds || []).length;
+    const paged = (classroom.studentIds || []).slice(skip, skip + limit);
+    res.set('X-Total-Count', total.toString());
+    res.set('X-Page', page.toString());
+    res.set('X-Limit', limit.toString());
+    res.json(paged);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

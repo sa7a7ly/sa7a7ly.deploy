@@ -240,6 +240,12 @@ const ClassroomPageTeacher = () => {
                   {t('common.submissions')}
                 </button>
                 <button
+                  onClick={() => navigate(`/classroom/${classroomId}/grade-on-behalf`)}
+                  className="px-5 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
+                >
+                  {t('common.gradeOnBehalf')}
+                </button>
+                <button
                   onClick={() => setShowModal(true)}
                   className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
                   disabled={!canManage}

@@ -11,7 +11,13 @@ const submissionSchema = new mongoose.Schema(
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false,
+      default: null,
+    },
+    studentName: {
+      type: String,
+      default: '',
+      trim: true,
     },
 
     pdfPath: {
