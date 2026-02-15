@@ -31,6 +31,9 @@ export const getClassrooms = () =>
 export const getUsers = () =>
   API.get('/users');
 
+export const getUser = (id) =>
+  API.get(`/users/${id}`);
+
 export const getAllAssignments = () =>
   API.get('/assignments');
 
@@ -39,6 +42,13 @@ export const getAllSubmissions = () =>
 
 export const createTeacher = (data, adminSecret) =>
   API.post('/users/teachers', data, {
+    headers: {
+      'x-admin-secret': adminSecret,
+    },
+  });
+
+export const updateTeacherSubscription = (teacherId, data, adminSecret) =>
+  API.patch(`/users/teachers/${teacherId}/subscription`, data, {
     headers: {
       'x-admin-secret': adminSecret,
     },

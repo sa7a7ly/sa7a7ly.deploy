@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { createTeacher, getUsers } from '../../services/api';
+import { createTeacher, getUsers, updateTeacherSubscription } from '../../services/api';
 import logo from '../../images/image.png';
 import { useI18n } from '../../context/I18nContext';
 
@@ -8,6 +8,8 @@ const AdminTeachers = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [teachers, setTeachers] = useState([]);
+  const [submittingSubscription, setSubmittingSubscription] = useState(null);
+  const [subscriptionForms, setSubscriptionForms] = useState({});
   const { t } = useI18n();
   const [formData, setFormData] = useState({
     name: '',
@@ -22,6 +24,18 @@ const AdminTeachers = () => {
       const response = await getUsers();
       const onlyTeachers = response.data.filter((u) => u.role === 'TEACHER');
       setTeachers(onlyTeachers);
+      setSubscriptionForms((prev) => {
+        const next = { ...prev };
+        onlyTeachers.forEach((teacher) => {
+          if (!next[teacher._id]) {
+            next[teacher._id] = {
+              status: teacher.subscriptionStatus || 'TRIAL',
+              months: '1',
+            };
+          }
+        });
+        return next;
+      });
       setError('');
     } catch (err) {
       setError(t('errors.failedLoadTeachers'));
@@ -75,6 +89,36 @@ const AdminTeachers = () => {
       setError(err.response?.data?.message || t('errors.failedCreateTeacher'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSubscriptionChange = (teacherId, field, value) => {
+    setSubscriptionForms((prev) => ({
+      ...prev,
+      [teacherId]: {
+        ...prev[teacherId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSubscriptionUpdate = async (teacherId) => {
+    try {
+      setSubmittingSubscription(teacherId);
+      const data = subscriptionForms[teacherId];
+      await updateTeacherSubscription(
+        teacherId,
+        {
+          status: data.status,
+          months: data.months,
+        },
+        formData.adminSecret
+      );
+      fetchTeachers();
+    } catch (err) {
+      setError(err.response?.data?.message || t('errors.failedCreateTeacher'));
+    } finally {
+      setSubmittingSubscription(null);
     }
   };
 
@@ -204,20 +248,73 @@ const AdminTeachers = () => {
           <p className="text-slate-600">{t('common.noTeachersFound')}</p>
         ) : (
           <div className="space-y-3">
-            {teachers.map((t) => (
+            {teachers.map((teacher) => {
+              const statusLabel =
+                teacher.subscriptionStatus === 'ACTIVE'
+                  ? t('subscription.active')
+                  : teacher.subscriptionStatus === 'PAST_DUE'
+                  ? t('subscription.pastDue')
+                  : teacher.subscriptionStatus === 'CANCELED'
+                  ? t('subscription.canceled')
+                  : t('subscription.trial');
+              return (
               <div
-                key={t._id}
+                key={teacher._id}
                 className="border border-slate-200 rounded-xl px-4 py-3 flex justify-between items-center"
               >
                 <div>
-                  <p className="font-semibold text-slate-900">{t.name}</p>
-                  <p className="text-sm text-slate-600">{t.email}</p>
+                  <p className="font-semibold text-slate-900">{teacher.name}</p>
+                  <p className="text-sm text-slate-600">{teacher.email}</p>
+                  <p className="text-sm text-slate-500">
+                    {t('common.subscription')}: {statusLabel}
+                  </p>
+                  {teacher.subscriptionEndDate && (
+                    <p className="text-xs text-slate-500">
+                      {t('common.endDate')}:{' '}
+                      {new Date(teacher.subscriptionEndDate).toLocaleDateString()}
+                    </p>
+                  )}
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_0.8fr_0.6fr]">
+                    <select
+                      value={subscriptionForms[teacher._id]?.status || 'TRIAL'}
+                      onChange={(e) =>
+                        handleSubscriptionChange(teacher._id, 'status', e.target.value)
+                      }
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <option value="TRIAL">{t('subscription.trial')}</option>
+                      <option value="ACTIVE">{t('subscription.active')}</option>
+                      <option value="PAST_DUE">{t('subscription.pastDue')}</option>
+                      <option value="CANCELED">{t('subscription.canceled')}</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      value={subscriptionForms[teacher._id]?.months || '1'}
+                      onChange={(e) =>
+                        handleSubscriptionChange(teacher._id, 'months', e.target.value)
+                      }
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder={t('common.months')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSubscriptionUpdate(teacher._id)}
+                      disabled={submittingSubscription === teacher._id}
+                      className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {submittingSubscription === teacher._id
+                        ? t('common.loading')
+                        : t('common.update')}
+                    </button>
+                  </div>
                 </div>
                 <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">
                   TEACHER
                 </span>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

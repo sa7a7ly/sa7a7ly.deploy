@@ -22,6 +22,28 @@ const TeacherDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const subscriptionEnd = user?.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null;
+  const subscriptionActive =
+    user?.subscriptionStatus === 'ACTIVE' ||
+    user?.subscriptionStatus === 'TRIAL';
+  const subscriptionExpired =
+    subscriptionActive && subscriptionEnd && new Date() > subscriptionEnd;
+  const canManage =
+    subscriptionActive && !subscriptionExpired;
+  const subscriptionStatus = user?.subscriptionStatus || 'TRIAL';
+  const statusLabel =
+    subscriptionStatus === 'ACTIVE'
+      ? t('subscription.active')
+      : subscriptionStatus === 'PAST_DUE'
+      ? t('subscription.pastDue')
+      : subscriptionStatus === 'CANCELED'
+      ? t('subscription.canceled')
+      : t('subscription.trial');
+  const statusMessage = subscriptionStatus === 'TRIAL'
+    ? t('subscription.trialCta')
+    : subscriptionStatus === 'ACTIVE'
+    ? t('subscription.activeCta')
+    : t('subscription.inactiveCta');
 
   const fetchClassrooms = useCallback(async () => {
     try {
@@ -111,6 +133,25 @@ const TeacherDashboard = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-slate-500">{t('common.subscription')}</p>
+              <p className="text-xl font-bold text-slate-900">{statusLabel}</p>
+              <p className="mt-1 text-sm text-slate-600">{statusMessage}</p>
+              {subscriptionEnd && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {t('common.endDate')}: {subscriptionEnd.toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            {!canManage && (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                {subscriptionExpired ? t('subscription.expired') : t('subscription.inactive')}
+              </span>
+            )}
+          </div>
+        </div>
         <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm">
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-200/40 blur-2xl" />
           <div className="absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-sky-200/40 blur-2xl" />
@@ -241,12 +282,14 @@ const TeacherDashboard = () => {
                 <button
                   onClick={() => navigate('/resubmission-requests')}
                   className="px-5 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
+                  disabled={!canManage}
                 >
                   {t('resubmissions.title')}
                 </button>
                 <button
                   onClick={() => setShowModal(true)}
                   className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
+                  disabled={!canManage}
                 >
                   {t('createClassroom.title')}
                 </button>

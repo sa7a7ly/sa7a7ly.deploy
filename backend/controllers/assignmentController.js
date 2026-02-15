@@ -36,6 +36,20 @@ exports.createAssignment = async (req, res) => {
       creator.role === ROLE.ASSISTANT &&
       classroom.assistantIds.some((id) => id.toString() === creator._id.toString());
 
+    if (isTeacherOfClassroom) {
+      if (
+        creator.subscriptionStatus &&
+        ['ACTIVE', 'TRIAL'].includes(creator.subscriptionStatus) &&
+        creator.subscriptionEndDate &&
+        new Date() > new Date(creator.subscriptionEndDate)
+      ) {
+        return res.status(403).json({ message: 'Subscription expired' });
+      }
+      if (creator.subscriptionStatus === 'PAST_DUE' || creator.subscriptionStatus === 'CANCELED') {
+        return res.status(403).json({ message: 'Subscription inactive' });
+      }
+    }
+
     if (!isAdmin && !isTeacherOfClassroom && !isAssistantInClassroom) {
       return res.status(403).json({ message: 'Not allowed to create assignment in this classroom' });
     }

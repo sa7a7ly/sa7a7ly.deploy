@@ -39,6 +39,19 @@ const userSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    subscriptionStatus: {
+      type: String,
+      enum: ['TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELED'],
+      default: 'TRIAL',
+    },
+    subscriptionStartDate: {
+      type: Date,
+      default: null,
+    },
+    subscriptionEndDate: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -9,6 +9,7 @@ const {
   login,
   getUsers,
   getUser,
+  updateTeacherSubscription,
   getTeacherAssistants,
   getTeacherAssistantCode
 } = require('../controllers/userController');
@@ -24,6 +25,7 @@ router.post('/login', login);
 router.get('/', getUsers);
 router.get('/teachers/:teacherId/assistants', getTeacherAssistants);
 router.get('/teachers/:teacherId/assistant-code', getTeacherAssistantCode);
+router.patch('/teachers/:id/subscription', updateTeacherSubscription);
 router.get('/:id', getUser);
 
 module.exports = router;

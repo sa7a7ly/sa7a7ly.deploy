@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getClassrooms, joinClassroom } from '../services/api';
+import { getClassrooms, joinClassroom, getUser } from '../services/api';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
 
@@ -12,6 +12,7 @@ const AssistantDashboard = () => {
   const [error, setError] = useState('');
   const [joiningError, setJoiningError] = useState('');
   const [joining, setJoining] = useState(false);
+  const [teacherInfo, setTeacherInfo] = useState(null);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { t } = useI18n();
@@ -34,7 +35,28 @@ const AssistantDashboard = () => {
 
   useEffect(() => {
     fetchClassrooms();
-  }, [fetchClassrooms]);
+    if (user?.assistantTeacherId) {
+      getUser(user.assistantTeacherId)
+        .then((res) => setTeacherInfo(res.data))
+        .catch(() => setTeacherInfo(null));
+    }
+  }, [fetchClassrooms, user?.assistantTeacherId]);
+
+  const teacherStatus = teacherInfo?.subscriptionStatus || 'TRIAL';
+  const teacherStatusLabel =
+    teacherStatus === 'ACTIVE'
+      ? t('subscription.active')
+      : teacherStatus === 'PAST_DUE'
+      ? t('subscription.pastDue')
+      : teacherStatus === 'CANCELED'
+      ? t('subscription.canceled')
+      : t('subscription.trial');
+  const teacherStatusMessage =
+    teacherStatus === 'TRIAL'
+      ? t('subscription.trialCta')
+      : teacherStatus === 'ACTIVE'
+      ? t('subscription.activeCta')
+      : t('subscription.inactiveCta');
 
   const handleJoinClassroom = async (e) => {
     e.preventDefault();
@@ -87,6 +109,20 @@ const AssistantDashboard = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        {teacherInfo && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <p className="text-sm text-slate-500">{t('common.subscription')}</p>
+            <p className="text-xl font-bold text-slate-900">
+              {teacherStatusLabel}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">{teacherStatusMessage}</p>
+            {teacherInfo.subscriptionEndDate && (
+              <p className="mt-1 text-xs text-slate-500">
+                {t('common.endDate')}: {new Date(teacherInfo.subscriptionEndDate).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+        )}
         <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm">
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-200/40 blur-2xl" />
           <div className="absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-sky-200/40 blur-2xl" />

@@ -9,6 +9,12 @@ const ROLE = {
 };
 
 const ASSISTANT_CODE_LENGTH = 8;
+const SUBSCRIPTION_STATUS = {
+  TRIAL: 'TRIAL',
+  ACTIVE: 'ACTIVE',
+  PAST_DUE: 'PAST_DUE',
+  CANCELED: 'CANCELED',
+};
 
 function normalizeCode(input) {
   return String(input || '').trim().toUpperCase();
@@ -27,6 +33,32 @@ function generateAssistantCode() {
   }
 
   return code;
+}
+
+function addMonths(date, months) {
+  const base = new Date(date);
+  const d = new Date(base);
+  const targetMonth = d.getMonth() + Number(months);
+  d.setMonth(targetMonth);
+  if (d.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    d.setDate(0);
+  }
+  return d;
+}
+
+async function refreshTeacherSubscriptionStatus(user) {
+  if (user.role !== ROLE.TEACHER) return user;
+  if (
+    user.subscriptionEndDate &&
+    [SUBSCRIPTION_STATUS.ACTIVE, SUBSCRIPTION_STATUS.TRIAL].includes(
+      user.subscriptionStatus
+    ) &&
+    new Date() > new Date(user.subscriptionEndDate)
+  ) {
+    user.subscriptionStatus = SUBSCRIPTION_STATUS.PAST_DUE;
+    await user.save();
+  }
+  return user;
 }
 
 async function createUniqueAssistantCode() {
@@ -151,6 +183,9 @@ exports.createTeacher = async (req, res) => {
       assistantCodeHash = generated.assistantCodeHash;
     }
 
+    const startDate = new Date();
+    const endDate = addMonths(startDate, 1);
+
     const user = await User.create({
       name,
       email,
@@ -158,6 +193,9 @@ exports.createTeacher = async (req, res) => {
       role: ROLE.TEACHER,
       assistantCodeHash,
       assistantCode: code,
+      subscriptionStatus: SUBSCRIPTION_STATUS.TRIAL,
+      subscriptionStartDate: startDate,
+      subscriptionEndDate: endDate,
     });
 
     res.status(201).json({
@@ -166,6 +204,9 @@ exports.createTeacher = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionStartDate: user.subscriptionStartDate,
+        subscriptionEndDate: user.subscriptionEndDate,
       },
       assistantCode: code,
     });
@@ -222,6 +263,7 @@ exports.login = async (req, res) => {
     if (!match)
       return res.status(400).json({ message: 'Invalid credentials' });
 
+    await refreshTeacherSubscriptionStatus(user);
     user.passwordHash = undefined;
     res.json(user);
 
@@ -277,7 +319,49 @@ exports.getTeacherAssistantCode = async (req, res) => {
 // GET all users
 exports.getUsers = async (req, res) => {
   const users = await User.find();
+  await Promise.all(users.map((u) => refreshTeacherSubscriptionStatus(u)));
   res.json(users);
+};
+
+// ADMIN UPDATE TEACHER SUBSCRIPTION
+exports.updateTeacherSubscription = async (req, res) => {
+  try {
+    const adminSecret = req.header('x-admin-secret');
+    if (!process.env.ADMIN_SECRET || adminSecret !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ message: 'Admin authorization required' });
+    }
+
+    const { status, months } = req.body;
+    const teacher = await User.findOne({ _id: req.params.id, role: ROLE.TEACHER });
+    if (!teacher) {
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    if (!Object.values(SUBSCRIPTION_STATUS).includes(status)) {
+      return res.status(400).json({ message: 'Invalid subscription status' });
+    }
+
+    const now = new Date();
+    teacher.subscriptionStatus = status;
+
+    if (status === SUBSCRIPTION_STATUS.ACTIVE || status === SUBSCRIPTION_STATUS.TRIAL) {
+      const durationMonths = Number(months || 1);
+      teacher.subscriptionStartDate = now;
+      teacher.subscriptionEndDate = addMonths(now, durationMonths);
+    } else if (status === SUBSCRIPTION_STATUS.CANCELED) {
+      teacher.subscriptionEndDate = now;
+    }
+
+    await teacher.save();
+    res.json({
+      _id: teacher._id,
+      subscriptionStatus: teacher.subscriptionStatus,
+      subscriptionStartDate: teacher.subscriptionStartDate,
+      subscriptionEndDate: teacher.subscriptionEndDate,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
 };
 
 // GET single user

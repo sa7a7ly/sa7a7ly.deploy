@@ -22,6 +22,20 @@ exports.createClassroom = async (req, res) => {
       return res.status(403).json({ message: 'Only teachers or admins can create classrooms' });
     }
 
+    if (teacher) {
+      if (
+        teacher.subscriptionStatus &&
+        ['ACTIVE', 'TRIAL'].includes(teacher.subscriptionStatus) &&
+        teacher.subscriptionEndDate &&
+        new Date() > new Date(teacher.subscriptionEndDate)
+      ) {
+        return res.status(403).json({ message: 'Subscription expired' });
+      }
+      if (teacher.subscriptionStatus === 'PAST_DUE' || teacher.subscriptionStatus === 'CANCELED') {
+        return res.status(403).json({ message: 'Subscription inactive' });
+      }
+    }
+
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const classroom = await Classroom.create({

@@ -11,6 +11,13 @@ const ClassroomPageTeacher = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const subscriptionEnd = user?.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null;
+  const subscriptionActive =
+    user?.subscriptionStatus === 'ACTIVE' ||
+    user?.subscriptionStatus === 'TRIAL';
+  const subscriptionExpired =
+    subscriptionActive && subscriptionEnd && new Date() > subscriptionEnd;
+  const canManage = subscriptionActive && !subscriptionExpired;
   const [classroom, setClassroom] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +136,13 @@ const ClassroomPageTeacher = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        {!canManage && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-700">
+            {subscriptionExpired
+              ? t('subscription.expired')
+              : t('subscription.inactive')}
+          </div>
+        )}
         <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm">
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-200/40 blur-2xl" />
           <div className="absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-sky-200/40 blur-2xl" />
@@ -210,6 +224,7 @@ const ClassroomPageTeacher = () => {
               <button
                 onClick={() => setShowModal(true)}
                 className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
+                disabled={!canManage}
               >
                 {t('classroom.createAssignment')}
               </button>
