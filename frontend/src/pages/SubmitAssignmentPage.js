@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { submitAssignment, getAssignmentById } from '../services/api';
+import logo from '../images/image.png';
 
 const SubmitAssignmentPage = () => {
   const { assignmentId } = useParams();
@@ -108,80 +109,101 @@ const SubmitAssignmentPage = () => {
 
   if (result) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white shadow">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-            <div className="flex items-center gap-4">
+      <div className="min-h-screen bg-slate-50">
+        <nav className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => navigate(-1)}
-                className="text-indigo-600 hover:text-indigo-800 font-semibold"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 ← Back
               </button>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Submission Result
-              </h1>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                  Sa7a7ly
+                </p>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  Submission Result
+                </h1>
+              </div>
             </div>
             <button
               onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
               Logout
             </button>
           </div>
         </nav>
 
-        <div className="max-w-2xl mx-auto px-4 py-8">
-          <div className="bg-white rounded-lg shadow p-8">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                Assignment Submitted!
-              </h2>
-              <p className="text-gray-600">
-                Your assignment has been graded by AI
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6">
-                <p className="text-sm text-yellow-700 font-semibold mb-1">
-                  ⭐ Grade
+        <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm">
+            <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-200/40 blur-2xl" />
+            <div className="absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-sky-200/40 blur-2xl" />
+            <div className="relative flex items-center gap-4">
+              <img
+                src={logo}
+                alt="Sa7a7ly logo"
+                className="h-12 w-12 rounded-xl bg-white p-2 shadow"
+              />
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                  Great work
                 </p>
-                <p className="text-4xl font-bold text-yellow-600">
+                <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
+                  Assignment submitted!
+                </h2>
+                <p className="mt-2 text-slate-600">
+                  Your submission has been graded by AI.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
+                  Grade
+                </p>
+                <p className="mt-2 text-4xl font-bold text-amber-700">
                   {result.grade}
                   {assignment?.totalPoints != null
                     ? ` / ${assignment.totalPoints}`
                     : ''}
                 </p>
-              </div>
-
-              <div className="bg-blue-50 border-l-4 border-blue-400 p-6">
-                <p className="text-sm text-blue-700 font-semibold mb-2">
-                  📝 Feedback
+                <p className="mt-2 text-sm text-amber-700/80">
+                  Keep improving for higher scores.
                 </p>
-                <p className="text-gray-700">{result.feedback}</p>
               </div>
-
-              {result.uploadedPdf && (
-                <div className="bg-green-50 border-l-4 border-green-400 p-6">
-                  <p className="text-sm text-green-700 font-semibold mb-2">
-                    📄 Your Submission
-                  </p>
-                  <a
-                    href={result.uploadedPdf}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-600 hover:text-green-800 underline"
-                  >
-                    View PDF
-                  </a>
-                </div>
-              )}
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-6">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">
+                  Feedback
+                </p>
+                <p className="mt-3 text-slate-700">{result.feedback}</p>
+              </div>
             </div>
+
+            {result.uploadedPdf && (
+              <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                  Your submission
+                </p>
+                <a
+                  href={result.uploadedPdf}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-2 font-semibold text-emerald-700 hover:text-emerald-800 underline"
+                >
+                  View PDF
+                </a>
+              </div>
+            )}
 
             <button
               onClick={() => navigate(-1)}
-              className="w-full mt-8 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold"
+              className="w-full mt-8 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold"
             >
               Back to Assignments
             </button>
@@ -192,49 +214,77 @@ const SubmitAssignmentPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-slate-50">
+      <nav className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => navigate(-1)}
-              className="text-indigo-600 hover:text-indigo-800 font-semibold"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               ← Back
             </button>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Submit Assignment
-            </h1>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                Sa7a7ly
+              </p>
+              <h1 className="text-2xl font-bold text-slate-900">
+                Submit Assignment
+              </h1>
+            </div>
           </div>
           <button
             onClick={handleLogout}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+            className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
           >
             Logout
           </button>
         </div>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow p-8">
+      <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm">
+          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-200/40 blur-2xl" />
+          <div className="absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-sky-200/40 blur-2xl" />
+          <div className="relative flex items-center gap-4">
+            <img
+              src={logo}
+              alt="Sa7a7ly logo"
+              className="h-12 w-12 rounded-xl bg-white p-2 shadow"
+            />
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                Upload your work
+              </p>
+              <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
+                Submit your assignment
+              </h2>
+              <p className="mt-2 text-slate-600">
+                Send a PDF file and get AI feedback quickly.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
           <form onSubmit={handleSubmit}>
             <div
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
               onDragOver={handleDrag}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition ${
+              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition ${
                 isDragActive
-                  ? 'border-indigo-600 bg-indigo-50'
-                  : 'border-gray-300 hover:border-indigo-500'
+                  ? 'border-emerald-600 bg-emerald-50'
+                  : 'border-slate-300 hover:border-emerald-500'
               }`}
               onClick={() => fileInputRef.current?.click()}
             >
               <div className="mb-4 text-4xl">📤</div>
-              <p className="text-lg font-semibold text-gray-900 mb-2">
+              <p className="text-lg font-semibold text-slate-900 mb-2">
                 Drag and drop your PDF here
               </p>
-              <p className="text-gray-600 mb-4">or click to select a file</p>
+              <p className="text-slate-600 mb-4">or click to select a file</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -245,14 +295,14 @@ const SubmitAssignmentPage = () => {
             </div>
 
             {pdf && (
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-green-700 font-semibold">✓ Selected:</p>
-                <p className="text-gray-700">{pdf.name}</p>
+              <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <p className="text-emerald-700 font-semibold">Selected file</p>
+                <p className="text-slate-700">{pdf.name}</p>
               </div>
             )}
 
             {error && (
-              <div className="mt-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+              <div className="mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
                 {error}
               </div>
             )}
@@ -260,7 +310,7 @@ const SubmitAssignmentPage = () => {
             <button
               type="submit"
               disabled={loading || !pdf}
-              className="w-full mt-8 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold disabled:opacity-50"
+              className="w-full mt-8 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold disabled:opacity-50"
             >
               {loading ? 'Submitting...' : 'Submit Assignment'}
             </button>

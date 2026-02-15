@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { registerUser, registerAssistant } from '../services/api';
+import logo from '../images/image.png';
 
 const RegisterPage = () => {
   const [studentFormData, setStudentFormData] = useState({
@@ -82,61 +83,112 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-lg p-8 w-96">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6 text-center">
-          {showAssistantForm ? 'Assistant Registration' : 'Register as Student'}
-        </h2>
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-emerald-900 via-slate-800 to-slate-900 p-10 text-white">
+          <div>
+            <div className="flex items-center gap-3">
+              <img
+                src={logo}
+                alt="Sa7a7ly logo"
+                className="h-12 w-12 rounded-xl bg-white/10 p-2"
+              />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200">
+                  Sa7a7ly
+                </p>
+                <h1 className="text-3xl font-bold">Create your account</h1>
+              </div>
+            </div>
+            <p className="mt-6 text-sm text-emerald-100/90">
+              Join a workspace built for simple assignments, clear feedback, and
+              stronger results.
+            </p>
+          </div>
+          <div className="text-xs text-emerald-100/70">
+            Choose student or assistant to get started.
+          </div>
+        </div>
+
+        <div className="p-8 sm:p-10">
+          <div className="flex items-center gap-3 lg:hidden">
+            <img
+              src={logo}
+              alt="Sa7a7ly logo"
+              className="h-10 w-10 rounded-xl bg-slate-100 p-2"
+            />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700">
+                Sa7a7ly
+              </p>
+              <h1 className="text-2xl font-bold text-slate-900">
+                Create your account
+              </h1>
+            </div>
+          </div>
+          <h2 className="mt-6 text-2xl font-bold text-slate-900">
+            {showAssistantForm ? 'Assistant Registration' : 'Student Registration'}
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {showAssistantForm
+              ? 'Enter your assistant code to complete setup.'
+              : 'Create your student account to access classrooms.'}
+          </p>
 
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
             {error}
           </div>
         )}
 
-        <form onSubmit={showAssistantForm ? handleAssistantSubmit : handleStudentSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Name</label>
+        <form
+          onSubmit={showAssistantForm ? handleAssistantSubmit : handleStudentSubmit}
+          className="mt-6 space-y-4"
+        >
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">Name</label>
             <input
               type="text"
               name="name"
               value={showAssistantForm ? assistantFormData.name : studentFormData.name}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="Your name"
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Email</label>
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">Email</label>
             <input
               type="email"
               name="email"
               value={showAssistantForm ? assistantFormData.email : studentFormData.email}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="your@email.com"
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Password</label>
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">
+              Password
+            </label>
             <input
               type="password"
               name="password"
               value={showAssistantForm ? assistantFormData.password : studentFormData.password}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="••••••••"
             />
           </div>
 
           {showAssistantForm && (
-            <div className="mb-6">
-              <label className="block text-gray-700 font-semibold mb-2">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-2">
                 Teacher Assistant Code
               </label>
               <input
@@ -146,7 +198,7 @@ const RegisterPage = () => {
                 onChange={handleAssistantChange}
                 required
                 maxLength={8}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="8-character code"
               />
             </div>
@@ -155,7 +207,7 @@ const RegisterPage = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition disabled:opacity-50"
+            className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
           >
             {loading
               ? 'Registering...'
@@ -171,20 +223,21 @@ const RegisterPage = () => {
             setShowAssistantForm((prev) => !prev);
             setError('');
           }}
-          className="w-full mt-3 px-4 py-2 bg-white text-indigo-600 border border-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition"
+          className="w-full mt-3 px-4 py-2 bg-white text-emerald-700 border border-emerald-600 rounded-lg font-semibold hover:bg-emerald-50 transition"
         >
           {showAssistantForm ? 'Back to Student Registration' : 'Login as Assistant'}
         </button>
 
-        <p className="text-center mt-4 text-gray-600">
+        <p className="text-center mt-6 text-slate-600">
           Already have an account?{' '}
           <button
             onClick={() => navigate('/login')}
-            className="text-indigo-600 font-semibold hover:underline"
+            className="text-emerald-700 font-semibold hover:underline"
           >
             Login
           </button>
         </p>
+        </div>
       </div>
     </div>
   );
