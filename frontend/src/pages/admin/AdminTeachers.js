@@ -15,7 +15,7 @@ const AdminTeachers = () => {
     name: '',
     email: '',
     password: '',
-    adminSecret: localStorage.getItem('adminSecret') || '',
+    adminSecret: sessionStorage.getItem('adminSecret') || '',
   });
 
   const fetchTeachers = useCallback(async () => {
@@ -67,7 +67,7 @@ const AdminTeachers = () => {
         return;
       }
 
-      localStorage.setItem('adminSecret', formData.adminSecret);
+      sessionStorage.setItem('adminSecret', formData.adminSecret);
 
       await createTeacher(
         {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getAssignments, createAssignment } from '../services/api';
+import { getAssignments, createAssignment, getClassrooms } from '../services/api';
 import CreateAssignmentModal from '../components/CreateAssignmentModal';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
@@ -25,8 +25,20 @@ const ClassroomPageTeacher = () => {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
+    fetchClassroom();
     fetchAssignments();
   }, [classroomId]);
+
+  const fetchClassroom = async () => {
+    try {
+      const response = await getClassrooms();
+      const currentClassroom = response.data.find((c) => c._id === classroomId);
+      setClassroom(currentClassroom || null);
+    } catch (err) {
+      console.error('Failed to load classroom:', err);
+      setClassroom(null);
+    }
+  };
 
   const fetchAssignments = async () => {
     try {
@@ -92,8 +104,7 @@ const ClassroomPageTeacher = () => {
     return `${mins}m left`;
   };
 
-  // Note: In a real app, you'd fetch the classroom details separately
-  const joinCode = 'ABC123'; // This would come from classroom data
+  const joinCode = classroom?.joinCode;
 
   return (
     <div className="min-h-screen bg-slate-50">

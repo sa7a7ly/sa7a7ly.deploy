@@ -6,7 +6,8 @@ const User = require('../models/User');
 
 exports.createResubmissionRequest = async (req, res) => {
   try {
-    const { assignmentId, studentId, reason } = req.body;
+    const { assignmentId, reason } = req.body;
+    const studentId = req.user?.userId;
 
     if (!assignmentId || !studentId) {
       return res.status(400).json({ message: 'Assignment and student are required' });
@@ -51,7 +52,8 @@ exports.createResubmissionRequest = async (req, res) => {
 
 exports.getResubmissionRequests = async (req, res) => {
   try {
-    const { userId, status } = req.query;
+    const { status } = req.query;
+    const userId = req.user?.userId;
     if (!userId) {
       return res.status(400).json({ message: 'User ID is required' });
     }
@@ -90,7 +92,7 @@ exports.getResubmissionRequests = async (req, res) => {
 
 exports.updateResubmissionRequest = async (req, res) => {
   try {
-    const { status, decidedBy } = req.body;
+    const { status } = req.body;
 
     if (!['APPROVED', 'DECLINED'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
@@ -106,7 +108,7 @@ exports.updateResubmissionRequest = async (req, res) => {
     }
 
     request.status = status;
-    request.decidedBy = decidedBy || null;
+    request.decidedBy = req.user?.userId || null;
     request.decidedAt = new Date();
     await request.save();
 

@@ -11,15 +11,24 @@ const ROLE = {
 // CREATE classroom (teacher)
 exports.createClassroom = async (req, res) => {
   try {
-    const teacher = req.body.teacherId
-      ? await User.findOne({ _id: req.body.teacherId, role: ROLE.TEACHER })
-      : null;
-    const admin = req.body.adminId
-      ? await User.findOne({ _id: req.body.adminId, role: ROLE.ADMIN })
-      : null;
+    const requesterId = req.user?.userId;
+    const requesterRole = req.user?.role;
 
-    if (!teacher && !admin) {
+    if (![ROLE.TEACHER, ROLE.ADMIN].includes(requesterRole)) {
       return res.status(403).json({ message: 'Only teachers or admins can create classrooms' });
+    }
+
+    const teacher =
+      requesterRole === ROLE.TEACHER
+        ? await User.findOne({ _id: requesterId, role: ROLE.TEACHER })
+        : null;
+    const admin =
+      requesterRole === ROLE.ADMIN
+        ? await User.findOne({ _id: requesterId, role: ROLE.ADMIN })
+        : null;
+
+    if ((requesterRole === ROLE.TEACHER && !teacher) || (requesterRole === ROLE.ADMIN && !admin)) {
+      return res.status(403).json({ message: 'Unauthorized' });
     }
 
     if (teacher) {
@@ -111,7 +120,7 @@ exports.joinClassroom = async (req, res) => {
 
     if (!classroom) return res.status(404).json({ message: 'Invalid code' });
 
-    const user = await User.findById(req.body.userId || req.body.studentId);
+    const user = await User.findById(req.user?.userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }

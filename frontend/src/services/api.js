@@ -4,6 +4,15 @@ const API = axios.create({
   baseURL: 'http://localhost:5000/api',
 });
 
+API.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem('token');
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // AUTH
 export const registerUser = (data) =>
   API.post('/users/register', data);

@@ -39,7 +39,12 @@ async function callGemini(payload, retries = 2) {
 
 exports.submitAssignment = async(req, res) => {
     try {
-        const { assignmentId, studentId } = req.body;
+        const { assignmentId } = req.body;
+        const studentId = req.user?.userId;
+
+        if (req.user?.role !== "STUDENT") {
+            return res.status(403).json({ message: "Only students can submit assignments" });
+        }
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
@@ -323,7 +328,8 @@ exports.getSubmission = async(req, res) => {
 // GET latest submission for a student + assignment
 exports.getStudentSubmission = async (req, res) => {
     try {
-        const { assignmentId, studentId } = req.query;
+        const { assignmentId } = req.query;
+        const studentId = req.user?.userId;
         if (!assignmentId || !studentId) {
             return res.status(400).json({ message: "Assignment and student are required" });
         }

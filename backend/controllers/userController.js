@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 const ROLE = {
   ADMIN: 'ADMIN',
@@ -44,6 +45,23 @@ function addMonths(date, months) {
     d.setDate(0);
   }
   return d;
+}
+
+function signAuthToken(user) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT secret is not configured');
+  }
+
+  return jwt.sign(
+    {
+      userId: user._id.toString(),
+      role: user.role,
+      email: user.email,
+    },
+    secret,
+    { expiresIn: '7d' }
+  );
 }
 
 async function refreshTeacherSubscriptionStatus(user) {
@@ -100,7 +118,8 @@ exports.register = async (req, res) => {
     });
 
     user.passwordHash = undefined;
-    res.status(201).json(user);
+    const token = signAuthToken(user);
+    res.status(201).json({ user, token });
 
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -140,7 +159,8 @@ exports.registerAssistant = async (req, res) => {
     });
 
     user.passwordHash = undefined;
-    res.status(201).json(user);
+    const token = signAuthToken(user);
+    res.status(201).json({ user, token });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -264,8 +284,9 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
 
     await refreshTeacherSubscriptionStatus(user);
+    const token = signAuthToken(user);
     user.passwordHash = undefined;
-    res.json(user);
+    res.json({ user, token });
 
   } catch (err) {
     res.status(500).json({ message: err.message });

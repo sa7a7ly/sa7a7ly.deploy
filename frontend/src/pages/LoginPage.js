@@ -26,12 +26,13 @@ const LoginPage = () => {
       });
 
       login(response.data);
+      const loggedInUser = response.data?.user || response.data;
 
-      if (response.data.role === 'ADMIN') {
+      if (loggedInUser.role === 'ADMIN') {
         navigate('/admin/users');
-      } else if (response.data.role === 'TEACHER') {
+      } else if (loggedInUser.role === 'TEACHER') {
         navigate('/teacher-dashboard');
-      } else if (response.data.role === 'ASSISTANT') {
+      } else if (loggedInUser.role === 'ASSISTANT') {
         navigate('/assistant-dashboard');
       } else {
         navigate('/student-dashboard');

@@ -23,7 +23,7 @@ exports.createAssignment = async (req, res) => {
       return res.status(404).json({ message: 'Classroom not found' });
     }
 
-    const creator = await User.findById(req.body.createdBy);
+    const creator = await User.findById(req.user?.userId);
     if (!creator) {
       return res.status(404).json({ message: 'Creator not found' });
     }
@@ -63,7 +63,7 @@ exports.createAssignment = async (req, res) => {
       modelAnswerText: req.body.modelAnswerText,
       totalPoints: req.body.totalPoints || 100,
       dueDate: dueDateValue && !Number.isNaN(dueDateValue.getTime()) ? dueDateValue : null,
-      createdBy: req.body.createdBy,
+      createdBy: creator._id,
     });
 
     classroom.assignments.push(assignment._id);
