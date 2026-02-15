@@ -1,6 +1,7 @@
 const Assignment = require('../models/Assignment');
 const Classroom = require('../models/Classroom');
 const User = require('../models/User');
+const { uploadPdfBuffer } = require('../services/cloudinary');
 
 const ROLE = {
   ADMIN: 'ADMIN',
@@ -16,6 +17,10 @@ exports.createAssignment = async (req, res) => {
 
     if (!req.file) {
       return res.status(400).json({ message: 'Model answer PDF required' });
+    }
+
+    if (!req.file.buffer) {
+      return res.status(400).json({ message: 'Invalid PDF upload' });
     }
 
     const classroom = await Classroom.findById(req.body.classroomId);
@@ -54,12 +59,17 @@ exports.createAssignment = async (req, res) => {
       return res.status(403).json({ message: 'Not allowed to create assignment in this classroom' });
     }
 
+    const uploadedModelAnswer = await uploadPdfBuffer(
+      req.file.buffer,
+      'sa7a7ly/assignments'
+    );
+
     const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
     const assignment = await Assignment.create({
       classroomId: req.body.classroomId,
       title: req.body.title,
       description: req.body.description || '',
-      modelAnswerPdfPath: req.file.path,
+      modelAnswerPdfPath: uploadedModelAnswer.secure_url,
       modelAnswerText: req.body.modelAnswerText,
       totalPoints: req.body.totalPoints || 100,
       dueDate: dueDateValue && !Number.isNaN(dueDateValue.getTime()) ? dueDateValue : null,

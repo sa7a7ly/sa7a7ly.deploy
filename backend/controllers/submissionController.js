@@ -6,6 +6,8 @@ const Assignment = require("../models/Assignment");
 const ResubmissionRequest = require("../models/ResubmissionRequest");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
+const { uploadPdfBuffer } = require("../services/cloudinary");
+
 
 const GEMINI_URL =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
@@ -39,6 +41,27 @@ async function callGemini(payload, retries = 2) {
     }
 }
 
+async function getPdfBuffer(source, fallbackBuffer) {
+    if (fallbackBuffer && source == null) {
+        return fallbackBuffer;
+    }
+
+    if (typeof source === "string" && /^https?:\/\//i.test(source)) {
+        const response = await axios.get(source, { responseType: "arraybuffer" });
+        return Buffer.from(response.data);
+    }
+
+    if (typeof source === "string") {
+        return fs.readFileSync(source);
+    }
+
+    if (fallbackBuffer) {
+        return fallbackBuffer;
+    }
+
+    throw new Error("Unable to read PDF");
+}
+
 exports.submitAssignment = async(req, res) => {
     try {
         const { assignmentId } = req.body;
@@ -50,6 +73,10 @@ exports.submitAssignment = async(req, res) => {
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
+        }
+
+        if (!req.file.buffer) {
+            return res.status(400).json({ message: "Invalid PDF upload" });
         }
 
         const assignment = await Assignment.findById(assignmentId);
@@ -84,8 +111,8 @@ exports.submitAssignment = async(req, res) => {
             });
         }
 
-        const studentPdf = fs.readFileSync(req.file.path);
-        const modelPdf = fs.readFileSync(assignment.modelAnswerPdfPath);
+        const studentPdf = req.file.buffer;
+        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
 
         // 🔒 Identical file check
         const studentHash = crypto
@@ -98,10 +125,14 @@ exports.submitAssignment = async(req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
+            const uploadedSubmission = await uploadPdfBuffer(
+                req.file.buffer,
+                "sa7a7ly/submissions"
+            );
             const submission = await Submission.create({
                 assignmentId,
                 studentId,
-                pdfPath: req.file.path,
+                pdfPath: uploadedSubmission.secure_url,
                 grade: assignment.totalPoints,
                 feedback: "Identical to model answer. Full marks awarded.",
                 submittedBy: studentId,
@@ -262,10 +293,15 @@ ONLY return pure JSON.
             });
         }
 
+        const uploadedSubmission = await uploadPdfBuffer(
+            req.file.buffer,
+            "sa7a7ly/submissions"
+        );
+
         const submission = await Submission.create({
             assignmentId,
             studentId,
-            pdfPath: req.file.path,
+            pdfPath: uploadedSubmission.secure_url,
             grade: result.totalGrade,
             feedback: feedbackText.trim(),
             submittedBy: studentId,
