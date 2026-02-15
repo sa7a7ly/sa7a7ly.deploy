@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { submitAssignment, getAssignmentById } from '../services/api';
+import { jsPDF } from 'jspdf';
 import logo from '../images/image.png';
 
 const SubmitAssignmentPage = () => {
@@ -107,6 +108,66 @@ const SubmitAssignmentPage = () => {
     navigate('/');
   };
 
+  const handleDownloadFeedback = () => {
+    if (!result) {
+      return;
+    }
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 16;
+    let y = 20;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Assignment Feedback', margin, y);
+
+    y += 10;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Student: ${user?.name || 'N/A'}`, margin, y);
+
+    y += 6;
+    if (assignment?.title) {
+      doc.text(`Assignment: ${assignment.title}`, margin, y);
+      y += 6;
+    }
+
+    doc.text(
+      `Grade: ${result.grade}${
+        assignment?.totalPoints != null ? ` / ${assignment.totalPoints}` : ''
+      }`,
+      margin,
+      y
+    );
+
+    y += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Feedback', margin, y);
+
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    const feedbackLines = doc.splitTextToSize(
+      result.feedback || 'No feedback provided.',
+      pageWidth - margin * 2
+    );
+    feedbackLines.forEach((line) => {
+      if (y > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += 6;
+    });
+
+    const safeTitle = (assignment?.title || 'assignment')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+    doc.save(`feedback-${safeTitle || 'assignment'}.pdf`);
+  };
+
   if (result) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -201,12 +262,20 @@ const SubmitAssignmentPage = () => {
               </div>
             )}
 
-            <button
-              onClick={() => navigate(-1)}
-              className="w-full mt-8 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold"
-            >
-              Back to Assignments
-            </button>
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <button
+                onClick={handleDownloadFeedback}
+                className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
+              >
+                Download Feedback PDF
+              </button>
+              <button
+                onClick={() => navigate(-1)}
+                className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold"
+              >
+                Back to Assignments
+              </button>
+            </div>
           </div>
         </div>
       </div>
