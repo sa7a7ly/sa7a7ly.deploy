@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useI18n } from '../context/I18nContext';
 
 const CreateClassroomModal = ({ onClose, onCreate }) => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const { t } = useI18n();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,10 +24,10 @@ const CreateClassroomModal = ({ onClose, onCreate }) => {
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
-              New Classroom
+              {t('createClassroom.title')}
             </p>
             <h2 className="text-2xl font-bold text-slate-900">
-              Create Classroom
+              {t('createClassroom.title')}
             </h2>
           </div>
           <button
@@ -40,7 +42,7 @@ const CreateClassroomModal = ({ onClose, onCreate }) => {
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Classroom Name
+              {t('createClassroom.name')}
             </label>
             <input
               type="text"
@@ -51,7 +53,7 @@ const CreateClassroomModal = ({ onClose, onCreate }) => {
               placeholder="e.g., Physics 101"
             />
             <p className="mt-2 text-sm text-slate-500">
-              Keep the name short and clear for students.
+              {t('createClassroom.nameHelp')}
             </p>
           </div>
 
@@ -61,14 +63,14 @@ const CreateClassroomModal = ({ onClose, onCreate }) => {
               disabled={loading}
               className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create'}
+              {loading ? t('common.loading') : t('common.create')}
             </button>
             <button
               type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg font-semibold hover:bg-slate-50 transition"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>

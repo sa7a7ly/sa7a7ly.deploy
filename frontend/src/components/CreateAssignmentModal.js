@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useI18n } from '../context/I18nContext';
 
 const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
   const [formData, setFormData] = useState({
@@ -9,6 +10,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     dueDate: '',
   });
   const [loading, setLoading] = useState(false);
+  const { t } = useI18n();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -55,10 +57,10 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
-              New Assignment
+              {t('createAssignment.title')}
             </p>
             <h2 className="text-2xl font-bold text-slate-900">
-              Create Assignment
+              {t('createAssignment.title')}
             </h2>
           </div>
           <button
@@ -73,7 +75,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Title
+              {t('common.title')}
             </label>
             <input
               type="text"
@@ -88,7 +90,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Description
+              {t('common.description')}
             </label>
             <textarea
               name="description"
@@ -99,13 +101,13 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
               rows="3"
             />
             <p className="mt-2 text-sm text-slate-500">
-              Add clear instructions to help students complete the task.
+              {t('createAssignment.descriptionHelp')}
             </p>
           </div>
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Total Points
+              {t('createAssignment.totalPoints')}
             </label>
             <input
               type="number"
@@ -120,7 +122,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Due Date (Server Time)
+              {t('createAssignment.dueDate')}
             </label>
             <input
               type="datetime-local"
@@ -130,13 +132,13 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             <p className="mt-2 text-sm text-slate-500">
-              Students will see the deadline and time left.
+              {t('createAssignment.dueDateHelp')}
             </p>
           </div>
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Model Answer PDF
+              {t('createAssignment.modelAnswer')}
             </label>
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5">
               <input
@@ -146,7 +148,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
                 className="w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-emerald-700"
               />
               <p className="mt-2 text-sm text-slate-500">
-                Upload an optional PDF to help students understand expectations.
+                {t('landing.supportBody')}
               </p>
             </div>
           </div>
@@ -157,14 +159,14 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
               disabled={loading}
               className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create'}
+              {loading ? t('common.loading') : t('common.create')}
             </button>
             <button
               type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg font-semibold hover:bg-slate-50 transition"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>

@@ -4,11 +4,13 @@ import { useAuth } from '../context/AuthContext';
 import { getAssignments, createAssignment } from '../services/api';
 import CreateAssignmentModal from '../components/CreateAssignmentModal';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const ClassroomPageTeacher = () => {
   const { classroomId } = useParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const [classroom, setClassroom] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,13 +103,15 @@ const ClassroomPageTeacher = () => {
               }
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              ← Back
+              ← {t('common.back')}
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
                 Sa7a7ly
               </p>
-              <h1 className="text-2xl font-bold text-slate-900">Classroom</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {t('common.classroom')}
+              </h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -118,7 +122,7 @@ const ClassroomPageTeacher = () => {
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </div>
@@ -141,7 +145,7 @@ const ClassroomPageTeacher = () => {
                     Classroom tools
                   </p>
                   <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
-                    Manage assignments with clarity
+                    {t('classroom.manageAssignments')}
                   </h2>
                 </div>
               </div>
@@ -176,20 +180,20 @@ const ClassroomPageTeacher = () => {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_2fr]">
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Join Code
+              {t('classroom.joinCode')}
             </p>
             <p className="mt-2 text-3xl font-mono font-bold text-emerald-700">
               {joinCode}
             </p>
             <p className="mt-3 text-sm text-slate-600">
-              Share this code with students so they can join the classroom.
+              {t('classroom.shareCode')}
             </p>
             <button
               type="button"
               className="mt-4 w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               onClick={() => navigator.clipboard?.writeText(joinCode)}
             >
-              Copy Join Code
+              {t('classroom.joinCode')}
             </button>
           </section>
 
@@ -200,29 +204,29 @@ const ClassroomPageTeacher = () => {
                   Assignments
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  Manage assignments
+                  {t('classroom.manageAssignments')}
                 </h2>
               </div>
               <button
                 onClick={() => setShowModal(true)}
                 className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
               >
-                Create Assignment
+                {t('classroom.createAssignment')}
               </button>
             </div>
 
         {loading ? (
           <div className="text-center py-10">
-            <p className="text-slate-600">Loading assignments...</p>
+            <p className="text-slate-600">{t('common.loading')}</p>
           </div>
         ) : assignments.length === 0 ? (
           <div className="mt-6 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-            <p className="text-slate-600 mb-4">No assignments yet</p>
+            <p className="text-slate-600 mb-4">{t('classroom.noAssignmentsTeacher')}</p>
             <button
               onClick={() => setShowModal(true)}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
             >
-              Create your first assignment
+              {t('classroom.createFirstAssignment')}
             </button>
           </div>
         ) : (
@@ -242,8 +246,8 @@ const ClassroomPageTeacher = () => {
                 </div>
                 <p className="mt-2 text-slate-600">{assignment.description}</p>
                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  <p>Due: {formatDateTime(assignment.dueDate)}</p>
-                  <p>Time left: {getTimeLeft(assignment.dueDate)}</p>
+                  <p>{t('common.due')}: {formatDateTime(assignment.dueDate)}</p>
+                  <p>{t('common.timeLeft')}: {getTimeLeft(assignment.dueDate)}</p>
                 </div>
               </div>
             ))}

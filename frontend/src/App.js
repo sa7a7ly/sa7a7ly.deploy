@@ -1,7 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { I18nProvider } from './context/I18nContext';
 import PrivateRoute from './components/PrivateRoute';
+import LanguageToggle from './components/LanguageToggle';
 
 // Pages
 import LandingPage from './pages/LandingPage';
@@ -26,11 +28,13 @@ import './index.css';
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+      <I18nProvider>
+        <AuthProvider>
+          <LanguageToggle />
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
 
           {/* Teacher Routes */}
           <Route
@@ -118,8 +122,9 @@ function App() {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
+          </Routes>
+        </AuthProvider>
+      </I18nProvider>
     </Router>
   );
 }

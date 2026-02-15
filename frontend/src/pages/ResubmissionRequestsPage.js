@@ -6,6 +6,7 @@ import {
   updateResubmissionRequest,
 } from '../services/api';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const ResubmissionRequestsPage = () => {
   const { user, logout } = useAuth();
@@ -13,6 +14,7 @@ const ResubmissionRequestsPage = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { t } = useI18n();
 
   const fetchRequests = useCallback(async () => {
     try {
@@ -21,7 +23,7 @@ const ResubmissionRequestsPage = () => {
       setRequests(response.data);
       setError('');
     } catch (err) {
-      setError('Failed to load resubmission requests');
+      setError(t('errors.failedLoadRequests'));
     } finally {
       setLoading(false);
     }
@@ -63,7 +65,7 @@ const ResubmissionRequestsPage = () => {
                 Resubmissions
               </p>
               <h1 className="text-2xl font-bold text-slate-900">
-                Requests
+                {t('resubmissions.title')}
               </h1>
             </div>
           </div>
@@ -75,7 +77,7 @@ const ResubmissionRequestsPage = () => {
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </div>
@@ -88,14 +90,14 @@ const ResubmissionRequestsPage = () => {
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                Review queue
-              </p>
-              <h2 className="text-3xl font-bold text-slate-900">
-                Resubmission requests
-              </h2>
-              <p className="mt-2 text-slate-600">
-                Approve or decline student requests with their reason.
-              </p>
+              {t('resubmissions.review')}
+            </p>
+            <h2 className="text-3xl font-bold text-slate-900">
+              {t('resubmissions.title')}
+            </h2>
+            <p className="mt-2 text-slate-600">
+              {t('resubmissions.review')}
+            </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white/80 px-6 py-4 text-center shadow-sm">
               <p className="text-2xl font-bold text-slate-900">
@@ -114,11 +116,11 @@ const ResubmissionRequestsPage = () => {
 
         {loading ? (
           <div className="text-center py-10 text-slate-600">
-            Loading requests...
+            {t('common.loading')}
           </div>
         ) : requests.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-600">
-            No resubmission requests right now.
+            {t('resubmissions.noRequests')}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
@@ -129,12 +131,12 @@ const ResubmissionRequestsPage = () => {
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="text-sm text-slate-500">Student</p>
+                    <p className="text-sm text-slate-500">{t('common.users')}</p>
                     <p className="font-semibold text-slate-900">
                       {request.studentId?.name || 'Unknown'} (
                       {request.studentId?.email || 'No email'})
                     </p>
-                    <p className="mt-2 text-sm text-slate-500">Assignment</p>
+                    <p className="mt-2 text-sm text-slate-500">{t('common.assignments')}</p>
                     <p className="font-semibold text-slate-900">
                       {request.assignmentId?.title || 'Untitled'}
                     </p>
@@ -159,7 +161,7 @@ const ResubmissionRequestsPage = () => {
                   </div>
                 </div>
                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  <p className="font-semibold text-slate-900">Reason</p>
+                  <p className="font-semibold text-slate-900">{t('resubmissions.reason')}</p>
                   <p className="mt-1">{request.reason}</p>
                 </div>
                 {request.status === 'PENDING' && (
@@ -168,13 +170,13 @@ const ResubmissionRequestsPage = () => {
                       onClick={() => handleDecision(request._id, 'APPROVED')}
                       className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 transition"
                     >
-                      Approve
+                      {t('resubmissions.approve')}
                     </button>
                     <button
                       onClick={() => handleDecision(request._id, 'DECLINED')}
                       className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 transition"
                     >
-                      Decline
+                      {t('resubmissions.decline')}
                     </button>
                   </div>
                 )}

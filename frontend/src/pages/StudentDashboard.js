@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getClassrooms, joinClassroom } from '../services/api';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const StudentDashboard = () => {
   const [joinCode, setJoinCode] = useState('');
@@ -13,6 +14,7 @@ const StudentDashboard = () => {
   const [joining, setJoining] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useI18n();
 
   useEffect(() => {
     fetchClassrooms();
@@ -69,18 +71,18 @@ const StudentDashboard = () => {
               Sa7a7ly Student
             </p>
             <h1 className="text-2xl font-bold text-slate-900">
-              Student Dashboard
+              {t('dashboards.student')}
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
-              Welcome, {user?.name}
+              {t('dashboards.welcome')}, {user?.name}
             </span>
             <button
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </div>
@@ -103,7 +105,7 @@ const StudentDashboard = () => {
                     Sa7a7ly
                   </p>
                   <h1 className="text-3xl font-bold text-slate-900 md:text-4xl">
-                    Helping you stay on top of assignments
+                    {t('classroom.stayOnTop')}
                   </h1>
                 </div>
               </div>
@@ -114,13 +116,13 @@ const StudentDashboard = () => {
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <span className="rounded-full bg-emerald-600 px-4 py-1 text-xs font-semibold uppercase tracking-wider text-white">
-                  Student Success
+                  {t('landing.studentSuccess')}
                 </span>
                 <span className="rounded-full bg-sky-600 px-4 py-1 text-xs font-semibold uppercase tracking-wider text-white">
-                  Clear Progress
+                  {t('landing.support')}
                 </span>
                 <span className="rounded-full bg-slate-900 px-4 py-1 text-xs font-semibold uppercase tracking-wider text-white">
-                  Easy Assignments
+                  {t('landing.organize')}
                 </span>
               </div>
             </div>
@@ -153,7 +155,7 @@ const StudentDashboard = () => {
                   Quick Join
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  Join a Classroom
+                  {t('classroom.joinAClassroom')}
                 </h2>
               </div>
               <div className="hidden md:flex flex-col items-end text-xs text-slate-500">
@@ -162,7 +164,7 @@ const StudentDashboard = () => {
               </div>
             </div>
             <p className="mt-3 text-sm text-slate-600">
-              Enter the class code to instantly access assignments and updates.
+              {t('classroom.joinAClassroom')}
             </p>
             <form
               onSubmit={handleJoinClassroom}
@@ -180,7 +182,7 @@ const StudentDashboard = () => {
                 disabled={joining || !joinCode}
                 className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold disabled:opacity-50"
               >
-                {joining ? 'Joining...' : 'Join Classroom'}
+                {joining ? t('common.loading') : t('classroom.joinAClassroom')}
               </button>
             </form>
             {joiningError && (
@@ -197,11 +199,11 @@ const StudentDashboard = () => {
                   My Learning
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  My Classrooms
+                  {t('common.classrooms')}
                 </h2>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
-                {classrooms.length} classrooms
+                {classrooms.length} {t('common.classrooms')}
               </span>
             </div>
 
@@ -213,12 +215,12 @@ const StudentDashboard = () => {
 
             {loading ? (
               <div className="text-center py-10">
-                <p className="text-slate-600">Loading classrooms...</p>
+                <p className="text-slate-600">{t('common.loading')}</p>
               </div>
             ) : classrooms.length === 0 ? (
               <div className="mt-6 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
                 <p className="text-slate-600">
-                  No classrooms yet. Join one using a code to get started.
+                  {t('common.noClassroomsFound')}
                 </p>
               </div>
             ) : (
@@ -240,7 +242,7 @@ const StudentDashboard = () => {
                       }
                       className="mt-4 w-full rounded-lg border border-slate-200 bg-slate-900 px-4 py-2 text-white transition hover:bg-slate-800"
                     >
-                      View Classroom
+                      {t('classroom.viewClassroom')}
                     </button>
                   </div>
                 ))}

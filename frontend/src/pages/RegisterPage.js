@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { registerUser, registerAssistant } from '../services/api';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const RegisterPage = () => {
   const [studentFormData, setStudentFormData] = useState({
@@ -22,6 +23,7 @@ const RegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { t } = useI18n();
 
   const handleStudentChange = (e) => {
     const { name, value } = e.target;
@@ -97,16 +99,15 @@ const RegisterPage = () => {
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200">
                   Sa7a7ly
                 </p>
-                <h1 className="text-3xl font-bold">Create your account</h1>
+                <h1 className="text-3xl font-bold">{t('auth.createAccount')}</h1>
               </div>
             </div>
             <p className="mt-6 text-sm text-emerald-100/90">
-              Join a workspace built for simple assignments, clear feedback, and
-              stronger results.
+              {t('landing.subhead')}
             </p>
           </div>
           <div className="text-xs text-emerald-100/70">
-            Choose student or assistant to get started.
+            {t('landing.startBody')}
           </div>
         </div>
 
@@ -122,17 +123,19 @@ const RegisterPage = () => {
                 Sa7a7ly
               </p>
               <h1 className="text-2xl font-bold text-slate-900">
-                Create your account
+                {t('auth.createAccount')}
               </h1>
             </div>
           </div>
           <h2 className="mt-6 text-2xl font-bold text-slate-900">
-            {showAssistantForm ? 'Assistant Registration' : 'Student Registration'}
+            {showAssistantForm
+              ? t('auth.registerAssistant')
+              : t('auth.registerStudent')}
           </h2>
           <p className="mt-2 text-sm text-slate-600">
             {showAssistantForm
-              ? 'Enter your assistant code to complete setup.'
-              : 'Create your student account to access classrooms.'}
+              ? t('auth.registerHelpAssistant')
+              : t('auth.registerHelpStudent')}
           </p>
 
         {error && (
@@ -146,7 +149,9 @@ const RegisterPage = () => {
           className="mt-6 space-y-4"
         >
           <div>
-            <label className="block text-slate-700 font-semibold mb-2">Name</label>
+            <label className="block text-slate-700 font-semibold mb-2">
+              {t('common.name')}
+            </label>
             <input
               type="text"
               name="name"
@@ -159,7 +164,9 @@ const RegisterPage = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-2">Email</label>
+            <label className="block text-slate-700 font-semibold mb-2">
+              {t('common.email')}
+            </label>
             <input
               type="email"
               name="email"
@@ -173,7 +180,7 @@ const RegisterPage = () => {
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Password
+              {t('common.password')}
             </label>
             <input
               type="password"
@@ -189,7 +196,7 @@ const RegisterPage = () => {
           {showAssistantForm && (
             <div>
               <label className="block text-slate-700 font-semibold mb-2">
-                Teacher Assistant Code
+                {t('auth.assistantCode')}
               </label>
               <input
                 type="text"
@@ -212,8 +219,8 @@ const RegisterPage = () => {
             {loading
               ? 'Registering...'
               : showAssistantForm
-              ? 'Register as Assistant'
-              : 'Register as Student'}
+              ? t('auth.registerAssistant')
+              : t('auth.registerStudent')}
           </button>
         </form>
 
@@ -225,16 +232,16 @@ const RegisterPage = () => {
           }}
           className="w-full mt-3 px-4 py-2 bg-white text-emerald-700 border border-emerald-600 rounded-lg font-semibold hover:bg-emerald-50 transition"
         >
-          {showAssistantForm ? 'Back to Student Registration' : 'Login as Assistant'}
+          {showAssistantForm ? t('auth.backToStudent') : t('auth.loginAsAssistant')}
         </button>
 
         <p className="text-center mt-6 text-slate-600">
-          Already have an account?{' '}
+          {t('auth.alreadyHave')}{' '}
           <button
             onClick={() => navigate('/login')}
             className="text-emerald-700 font-semibold hover:underline"
           >
-            Login
+            {t('common.login')}
           </button>
         </p>
         </div>

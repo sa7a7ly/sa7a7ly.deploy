@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getClassrooms } from '../../services/api';
 import logo from '../../images/image.png';
+import { useI18n } from '../../context/I18nContext';
 
 const AdminClassrooms = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [classrooms, setClassrooms] = useState([]);
+  const { t } = useI18n();
 
   const fetchClassrooms = useCallback(async () => {
     try {
@@ -14,11 +16,11 @@ const AdminClassrooms = () => {
       setClassrooms(response.data);
       setError('');
     } catch (err) {
-      setError('Failed to load classrooms');
+      setError(t('errors.failedLoadClassrooms'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchClassrooms();
@@ -42,20 +44,18 @@ const AdminClassrooms = () => {
                   Admin
                 </p>
                 <h2 className="text-3xl font-bold text-slate-900">
-                  Classrooms overview
+                  {t('admin.overviewClassrooms')}
                 </h2>
               </div>
             </div>
-            <p className="mt-3 text-slate-700">
-              Track classroom setup and keep join codes visible.
-            </p>
+            <p className="mt-3 text-slate-700">{t('admin.classroomsOverview')}</p>
           </div>
           <div className="grid w-full max-w-xs grid-cols-2 gap-3 text-center">
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">
                 {classrooms.length}
               </p>
-              <p className="text-sm text-slate-600">Total</p>
+              <p className="text-sm text-slate-600">{t('common.total')}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">Share</p>
@@ -66,16 +66,18 @@ const AdminClassrooms = () => {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h3 className="text-2xl font-bold text-slate-900 mb-4">Classrooms</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-4">
+          {t('common.classrooms')}
+        </h3>
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
       )}
       {loading ? (
-        <p className="text-slate-600">Loading...</p>
+        <p className="text-slate-600">{t('common.loading')}</p>
       ) : classrooms.length === 0 ? (
-        <p className="text-slate-600">No classrooms found.</p>
+        <p className="text-slate-600">{t('common.noClassroomsFound')}</p>
       ) : (
         <div className="space-y-3">
           {classrooms.map((c) => (

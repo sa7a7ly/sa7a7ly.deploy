@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { loginUser } from '../services/api';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -11,6 +12,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { t } = useI18n();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -57,16 +59,15 @@ const LoginPage = () => {
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200">
                   Sa7a7ly
                 </p>
-                <h1 className="text-3xl font-bold">Welcome back</h1>
+                <h1 className="text-3xl font-bold">{t('auth.welcomeBack')}</h1>
               </div>
             </div>
             <p className="mt-6 text-sm text-emerald-100/90">
-              Sign in to manage assignments, track progress, and keep your
-              classroom organized.
+              {t('landing.subhead')}
             </p>
           </div>
           <div className="text-xs text-emerald-100/70">
-            Built for students and teachers who want clarity and results.
+            {t('landing.startBody')}
           </div>
         </div>
 
@@ -81,12 +82,16 @@ const LoginPage = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700">
                 Sa7a7ly
               </p>
-              <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {t('auth.welcomeBack')}
+              </h1>
             </div>
           </div>
-          <h2 className="mt-6 text-2xl font-bold text-slate-900">Login</h2>
+          <h2 className="mt-6 text-2xl font-bold text-slate-900">
+            {t('auth.loginTitle')}
+          </h2>
           <p className="mt-2 text-sm text-slate-600">
-            Enter your email and password to continue.
+            {t('auth.loginHelp')}
           </p>
 
         {error && (
@@ -97,7 +102,9 @@ const LoginPage = () => {
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <label className="block text-slate-700 font-semibold mb-2">Email</label>
+            <label className="block text-slate-700 font-semibold mb-2">
+              {t('common.email')}
+            </label>
             <input
               type="email"
               value={email}
@@ -110,7 +117,7 @@ const LoginPage = () => {
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Password
+              {t('common.password')}
             </label>
             <input
               type="password"
@@ -127,17 +134,17 @@ const LoginPage = () => {
             disabled={loading}
             className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? t('common.loading') : t('common.login')}
           </button>
         </form>
 
           <p className="text-center mt-6 text-slate-600">
-            Don&apos;t have an account?{' '}
+            {t('auth.dontHave')}{' '}
             <button
               onClick={() => navigate('/register')}
               className="text-emerald-700 font-semibold hover:underline"
             >
-              Register
+              {t('common.register')}
             </button>
           </p>
         </div>

@@ -1,14 +1,16 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useI18n } from '../context/I18nContext';
 
 const AdminNav = () => {
   const location = useLocation();
+  const { t } = useI18n();
   const links = [
-    { to: '/admin/users', label: 'Users' },
-    { to: '/admin/teachers', label: 'Teachers' },
-    { to: '/admin/classrooms', label: 'Classrooms' },
-    { to: '/admin/assignments', label: 'Assignments' },
-    { to: '/admin/submissions', label: 'Submissions' },
+    { to: '/admin/users', label: t('common.users') },
+    { to: '/admin/teachers', label: t('common.teachers') },
+    { to: '/admin/classrooms', label: t('common.classrooms') },
+    { to: '/admin/assignments', label: t('common.assignments') },
+    { to: '/admin/submissions', label: t('common.submissions') },
   ];
 
   return (

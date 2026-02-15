@@ -3,10 +3,12 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import AdminNav from '../../components/AdminNav';
 import logo from '../../images/image.png';
+import { useI18n } from '../../context/I18nContext';
 
 const AdminLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const handleLogout = () => {
     logout();
@@ -27,7 +29,9 @@ const AdminLayout = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
                 Sa7a7ly Admin
               </p>
-              <h1 className="text-2xl font-bold text-slate-900">Admin Panel</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {t('admin.panel')}
+              </h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -38,7 +42,7 @@ const AdminLayout = () => {
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </div>

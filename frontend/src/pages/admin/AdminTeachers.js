@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createTeacher, getUsers } from '../../services/api';
 import logo from '../../images/image.png';
+import { useI18n } from '../../context/I18nContext';
 
 const AdminTeachers = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [teachers, setTeachers] = useState([]);
+  const { t } = useI18n();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -22,11 +24,11 @@ const AdminTeachers = () => {
       setTeachers(onlyTeachers);
       setError('');
     } catch (err) {
-      setError('Failed to load teachers');
+      setError(t('errors.failedLoadTeachers'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchTeachers();
@@ -47,7 +49,7 @@ const AdminTeachers = () => {
 
     try {
       if (!formData.adminSecret) {
-        setError('Admin secret is required');
+        setError(t('errors.adminSecretRequired'));
         return;
       }
 
@@ -70,7 +72,7 @@ const AdminTeachers = () => {
       }));
       fetchTeachers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create teacher');
+      setError(err.response?.data?.message || t('errors.failedCreateTeacher'));
     } finally {
       setSubmitting(false);
     }
@@ -94,20 +96,18 @@ const AdminTeachers = () => {
                   Admin
                 </p>
                 <h2 className="text-3xl font-bold text-slate-900">
-                  Teacher management
+                  {t('admin.teacherManagement')}
                 </h2>
               </div>
             </div>
-            <p className="mt-3 text-slate-700">
-              Create teacher accounts and track the teaching team in one place.
-            </p>
+            <p className="mt-3 text-slate-700">{t('admin.teachersOverview')}</p>
           </div>
           <div className="grid w-full max-w-xs grid-cols-2 gap-3 text-center">
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">
                 {teachers.length}
               </p>
-              <p className="text-sm text-slate-600">Teachers</p>
+              <p className="text-sm text-slate-600">{t('common.teachers')}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">Secure</p>
@@ -119,7 +119,7 @@ const AdminTeachers = () => {
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <h3 className="text-2xl font-bold text-slate-900 mb-4">
-          Create Teacher
+          {t('admin.createTeacher')}
         </h3>
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
@@ -132,7 +132,7 @@ const AdminTeachers = () => {
         >
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Name
+              {t('common.name')}
             </label>
             <input
               type="text"
@@ -145,7 +145,7 @@ const AdminTeachers = () => {
           </div>
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Email
+              {t('common.email')}
             </label>
             <input
               type="email"
@@ -158,7 +158,7 @@ const AdminTeachers = () => {
           </div>
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Password
+              {t('common.password')}
             </label>
             <input
               type="password"
@@ -171,7 +171,7 @@ const AdminTeachers = () => {
           </div>
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Admin Secret
+              {t('common.adminSecret')}
             </label>
             <input
               type="password"
@@ -188,18 +188,20 @@ const AdminTeachers = () => {
               disabled={submitting}
               className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold disabled:opacity-50"
             >
-              {submitting ? 'Creating...' : 'Create Teacher'}
+              {submitting ? t('common.loading') : t('admin.createTeacher')}
             </button>
           </div>
         </form>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h3 className="text-2xl font-bold text-slate-900 mb-4">Teachers</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-4">
+          {t('common.teachers')}
+        </h3>
         {loading ? (
-          <p className="text-slate-600">Loading...</p>
+          <p className="text-slate-600">{t('common.loading')}</p>
         ) : teachers.length === 0 ? (
-          <p className="text-slate-600">No teachers found.</p>
+          <p className="text-slate-600">{t('common.noTeachersFound')}</p>
         ) : (
           <div className="space-y-3">
             {teachers.map((t) => (

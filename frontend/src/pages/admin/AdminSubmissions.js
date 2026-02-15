@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getAllSubmissions } from '../../services/api';
 import logo from '../../images/image.png';
+import { useI18n } from '../../context/I18nContext';
 
 const AdminSubmissions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [submissions, setSubmissions] = useState([]);
+  const { t } = useI18n();
 
   const fetchSubmissions = useCallback(async () => {
     try {
@@ -14,11 +16,11 @@ const AdminSubmissions = () => {
       setSubmissions(response.data);
       setError('');
     } catch (err) {
-      setError('Failed to load submissions');
+      setError(t('errors.failedLoadSubmissions'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchSubmissions();
@@ -42,20 +44,18 @@ const AdminSubmissions = () => {
                   Admin
                 </p>
                 <h2 className="text-3xl font-bold text-slate-900">
-                  Submissions overview
+                  {t('admin.overviewSubmissions')}
                 </h2>
               </div>
             </div>
-            <p className="mt-3 text-slate-700">
-              Review submission flow and keep grading visibility across classes.
-            </p>
+            <p className="mt-3 text-slate-700">{t('admin.submissionsOverview')}</p>
           </div>
           <div className="grid w-full max-w-xs grid-cols-2 gap-3 text-center">
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">
                 {submissions.length}
               </p>
-              <p className="text-sm text-slate-600">Total</p>
+              <p className="text-sm text-slate-600">{t('common.total')}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">Track</p>
@@ -66,16 +66,18 @@ const AdminSubmissions = () => {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h3 className="text-2xl font-bold text-slate-900 mb-4">Submissions</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-4">
+          {t('common.submissions')}
+        </h3>
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
       )}
       {loading ? (
-        <p className="text-slate-600">Loading...</p>
+        <p className="text-slate-600">{t('common.loading')}</p>
       ) : submissions.length === 0 ? (
-        <p className="text-slate-600">No submissions found.</p>
+        <p className="text-slate-600">{t('common.noSubmissionsFound')}</p>
       ) : (
         <div className="space-y-3">
           {submissions.map((s) => (

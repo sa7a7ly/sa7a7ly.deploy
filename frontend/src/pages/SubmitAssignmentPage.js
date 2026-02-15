@@ -9,6 +9,7 @@ import {
 } from '../services/api';
 import { jsPDF } from 'jspdf';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const SubmitAssignmentPage = () => {
   const { assignmentId } = useParams();
@@ -27,6 +28,7 @@ const SubmitAssignmentPage = () => {
   const [existingSubmission, setExistingSubmission] = useState(null);
   const [infoMessage, setInfoMessage] = useState('');
   const fileInputRef = useRef(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     let isMounted = true;
@@ -64,7 +66,7 @@ const SubmitAssignmentPage = () => {
             latestRequest.used)
         ) {
           setResult(submission);
-          setInfoMessage('Submission already received. Showing your feedback.');
+          setInfoMessage(t('submit.resultTitle'));
         }
       } catch (_) {
         // Ignore if no submission found.
@@ -139,7 +141,7 @@ const SubmitAssignmentPage = () => {
       const response = await submitAssignment(formData);
       const payload = response.data?.submission ? response.data : { submission: response.data };
       if (payload.alreadySubmitted) {
-        setInfoMessage('Submission already received. Showing your feedback.');
+        setInfoMessage(t('submit.resultTitle'));
       } else {
         setInfoMessage('');
       }
@@ -148,7 +150,7 @@ const SubmitAssignmentPage = () => {
       setExistingSubmission(payload.submission);
       setPdf(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to submit assignment');
+      setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
     } finally {
       setLoading(false);
     }
@@ -170,7 +172,7 @@ const SubmitAssignmentPage = () => {
 
   const handleRequestResubmission = async () => {
     if (!resubmitReason.trim()) {
-      setError('Please provide a reason for resubmission');
+      setError(t('submit.requestResubmit'));
       return;
     }
     setRequestingResubmit(true);
@@ -183,9 +185,9 @@ const SubmitAssignmentPage = () => {
       });
       setResubmissionRequest(response.data);
       setResubmitReason('');
-      setInfoMessage('Resubmission request sent. Awaiting approval.');
+      setInfoMessage(t('submit.resubmitPending'));
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to request resubmission');
+      setError(err.response?.data?.message || t('errors.failedRequestResubmit'));
     } finally {
       setRequestingResubmit(false);
     }
@@ -193,35 +195,35 @@ const SubmitAssignmentPage = () => {
 
   const formatDateTime = (value) => {
     if (!value) {
-      return 'No deadline';
+      return t('common.noDeadline');
     }
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? 'No deadline' : date.toLocaleString();
+    return Number.isNaN(date.getTime()) ? t('common.noDeadline') : date.toLocaleString();
   };
 
   const getTimeLeft = (value) => {
     if (!value) {
-      return 'No deadline';
+      return t('common.noDeadline');
     }
     const due = new Date(value).getTime();
     if (Number.isNaN(due)) {
-      return 'No deadline';
+      return t('common.noDeadline');
     }
     const diff = due - (Date.now() + timeOffsetMs);
     if (diff <= 0) {
-      return 'Past due';
+      return t('common.pastDue');
     }
     const minutes = Math.floor(diff / 60000);
     const days = Math.floor(minutes / 1440);
     const hours = Math.floor((minutes % 1440) / 60);
     const mins = minutes % 60;
     if (days > 0) {
-      return `${days}d ${hours}h left`;
+      return `${days}d ${hours}h`;
     }
     if (hours > 0) {
-      return `${hours}h ${mins}m left`;
+      return `${hours}h ${mins}m`;
     }
-    return `${mins}m left`;
+    return `${mins}m`;
   };
 
   const loadImageAsDataUrl = (src) =>
@@ -348,14 +350,14 @@ const SubmitAssignmentPage = () => {
                 onClick={() => navigate(-1)}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                ← Back
+                ← {t('common.back')}
               </button>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
                   Sa7a7ly
                 </p>
                 <h1 className="text-2xl font-bold text-slate-900">
-                  Submission Result
+                  {t('submit.resultTitle')}
                 </h1>
               </div>
             </div>
@@ -363,7 +365,7 @@ const SubmitAssignmentPage = () => {
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </nav>
@@ -380,13 +382,13 @@ const SubmitAssignmentPage = () => {
               />
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                  Great work
+                  Sa7a7ly
                 </p>
                 <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
-                  Assignment submitted!
+                  {t('submit.submitted')}
                 </h2>
                 <p className="mt-2 text-slate-600">
-                  Your submission has been graded by AI.
+                  {t('submit.gradedByAi')}
                 </p>
               </div>
             </div>
@@ -401,7 +403,7 @@ const SubmitAssignmentPage = () => {
             <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
-                  Grade
+                  {t('submit.grade')}
                 </p>
                 <p className="mt-2 text-4xl font-bold text-amber-700">
                   {result.grade}
@@ -415,21 +417,21 @@ const SubmitAssignmentPage = () => {
               </div>
               <div className="rounded-2xl border border-sky-200 bg-sky-50 p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">
-                  Feedback
+                  {t('submit.feedback')}
                 </p>
                 <p className="mt-3 text-slate-700">{result.feedback}</p>
               </div>
             </div>
 
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
-              <p>Due: {formatDateTime(assignment?.dueDate)}</p>
-              <p>Time left: {getTimeLeft(assignment?.dueDate)}</p>
+              <p>{t('common.due')}: {formatDateTime(assignment?.dueDate)}</p>
+              <p>{t('common.timeLeft')}: {getTimeLeft(assignment?.dueDate)}</p>
             </div>
 
             {result.uploadedPdf && (
               <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                  Your submission
+                  {t('classroom.submitAssignment')}
                 </p>
                 <a
                   href={result.uploadedPdf}
@@ -437,24 +439,24 @@ const SubmitAssignmentPage = () => {
                   rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-2 font-semibold text-emerald-700 hover:text-emerald-800 underline"
                 >
-                  View PDF
+                  {t('common.viewPdf')}
                 </a>
               </div>
             )}
 
             {resubmissionRequest?.status === 'PENDING' && (
               <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 p-6 text-sky-700">
-                Resubmission request pending approval.
+                {t('submit.resubmitPending')}
               </div>
             )}
             {resubmissionRequest?.status === 'DECLINED' && (
               <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
-                Resubmission request declined.
+                {t('submit.resubmitDeclined')}
               </div>
             )}
             {resubmissionRequest?.status === 'APPROVED' && !resubmissionRequest.used && (
               <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-700">
-                Resubmission approved. You can submit a new version.
+                {t('submit.resubmitApproved')}
               </div>
             )}
 
@@ -464,21 +466,21 @@ const SubmitAssignmentPage = () => {
                 resubmissionRequest.used)) && (
               <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  Request Resubmission
+                  {t('submit.requestResubmit')}
                 </p>
                 <textarea
                   value={resubmitReason}
                   onChange={(e) => setResubmitReason(e.target.value)}
                   rows={4}
                   className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="Explain why you need to resubmit..."
+                  placeholder={t('submit.requestReasonPlaceholder')}
                 />
                 <button
                   onClick={handleRequestResubmission}
                   disabled={requestingResubmit}
                   className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {requestingResubmit ? 'Sending...' : 'Send Request'}
+                  {requestingResubmit ? t('common.loading') : t('submit.requestResubmit')}
                 </button>
               </div>
             )}
@@ -493,20 +495,20 @@ const SubmitAssignmentPage = () => {
                     }}
                     className="px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
                   >
-                    Submit New Version
+                    {t('submit.submitNewVersion')}
                   </button>
                 )}
               <button
                 onClick={handleDownloadFeedback}
                 className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
               >
-                Download Feedback PDF
+                {t('common.downloadPdf')}
               </button>
               <button
                 onClick={() => navigate(-1)}
                 className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold"
               >
-                Back to Assignments
+                {t('common.back')}
               </button>
             </div>
           </div>
@@ -524,14 +526,14 @@ const SubmitAssignmentPage = () => {
               onClick={() => navigate(-1)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              ← Back
+              ← {t('common.back')}
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
                 Sa7a7ly
               </p>
               <h1 className="text-2xl font-bold text-slate-900">
-                Submit Assignment
+                {t('submit.submitTitle')}
               </h1>
             </div>
           </div>
@@ -539,7 +541,7 @@ const SubmitAssignmentPage = () => {
             onClick={handleLogout}
             className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
           >
-            Logout
+            {t('common.logout')}
           </button>
         </div>
       </nav>
@@ -556,13 +558,13 @@ const SubmitAssignmentPage = () => {
             />
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                Upload your work
+                {t('classroom.submitAssignment')}
               </p>
               <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
-                Submit your assignment
+                {t('submit.submitTitle')}
               </h2>
               <p className="mt-2 text-slate-600">
-                Send a PDF file and get AI feedback quickly.
+                {t('landing.supportBody')}
               </p>
             </div>
           </div>
@@ -570,8 +572,8 @@ const SubmitAssignmentPage = () => {
 
         {assignment && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
-            <p>Due: {formatDateTime(assignment.dueDate)}</p>
-            <p>Time left: {getTimeLeft(assignment.dueDate)}</p>
+            <p>{t('common.due')}: {formatDateTime(assignment.dueDate)}</p>
+            <p>{t('common.timeLeft')}: {getTimeLeft(assignment.dueDate)}</p>
           </div>
         )}
 
@@ -579,20 +581,19 @@ const SubmitAssignmentPage = () => {
           resubmissionRequest?.status !== 'APPROVED' &&
           !resubmissionRequest?.used && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-700">
-              Submission already received. View your feedback above.
+              {t('submit.resultTitle')}
             </div>
           )}
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
           {isPastDue && (
             <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-              Submission is closed. The due date has passed.
+              {t('submit.closed')}
             </div>
           )}
           {!isPastDue && !canSubmit && (
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
-              You have already submitted this assignment. Request a resubmission
-              if you need to submit again.
+              {t('submit.requestResubmit')}
             </div>
           )}
           <form onSubmit={handleSubmit}>
@@ -614,9 +615,9 @@ const SubmitAssignmentPage = () => {
             >
               <div className="mb-4 text-4xl">📤</div>
               <p className="text-lg font-semibold text-slate-900 mb-2">
-                Drag and drop your PDF here
+                {t('classroom.submitAssignment')}
               </p>
-              <p className="text-slate-600 mb-4">or click to select a file</p>
+              <p className="text-slate-600 mb-4">{t('common.view')}</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -629,7 +630,7 @@ const SubmitAssignmentPage = () => {
 
             {pdf && (
               <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <p className="text-emerald-700 font-semibold">Selected file</p>
+                <p className="text-emerald-700 font-semibold">{t('common.view')}</p>
                 <p className="text-slate-700">{pdf.name}</p>
               </div>
             )}
@@ -645,7 +646,7 @@ const SubmitAssignmentPage = () => {
               disabled={loading || !pdf || !canSubmit}
               className="w-full mt-8 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold disabled:opacity-50"
             >
-              {loading ? 'Submitting...' : 'Submit Assignment'}
+              {loading ? t('common.loading') : t('submit.submitTitle')}
             </button>
           </form>
         </div>

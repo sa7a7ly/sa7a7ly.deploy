@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getAllAssignments } from '../../services/api';
 import logo from '../../images/image.png';
+import { useI18n } from '../../context/I18nContext';
 
 const AdminAssignments = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [assignments, setAssignments] = useState([]);
+  const { t } = useI18n();
 
   const fetchAssignments = useCallback(async () => {
     try {
@@ -14,11 +16,11 @@ const AdminAssignments = () => {
       setAssignments(response.data);
       setError('');
     } catch (err) {
-      setError('Failed to load assignments');
+      setError(t('errors.failedLoadAssignments'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchAssignments();
@@ -42,21 +44,18 @@ const AdminAssignments = () => {
                   Admin
                 </p>
                 <h2 className="text-3xl font-bold text-slate-900">
-                  Assignments overview
+                  {t('admin.overviewAssignments')}
                 </h2>
               </div>
             </div>
-            <p className="mt-3 text-slate-700">
-              Monitor all assignments across classrooms and keep quality
-              consistent.
-            </p>
+            <p className="mt-3 text-slate-700">{t('admin.assignmentsOverview')}</p>
           </div>
           <div className="grid w-full max-w-xs grid-cols-2 gap-3 text-center">
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">
                 {assignments.length}
               </p>
-              <p className="text-sm text-slate-600">Total</p>
+              <p className="text-sm text-slate-600">{t('common.total')}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
               <p className="text-2xl font-bold text-slate-900">Track</p>
@@ -67,16 +66,18 @@ const AdminAssignments = () => {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h3 className="text-2xl font-bold text-slate-900 mb-4">Assignments</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-4">
+          {t('common.assignments')}
+        </h3>
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
           {error}
         </div>
       )}
       {loading ? (
-        <p className="text-slate-600">Loading...</p>
+        <p className="text-slate-600">{t('common.loading')}</p>
       ) : assignments.length === 0 ? (
-        <p className="text-slate-600">No assignments found.</p>
+        <p className="text-slate-600">{t('common.noAssignmentsFound')}</p>
       ) : (
         <div className="space-y-3">
           {assignments.map((a) => (

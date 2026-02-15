@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAssignments } from '../services/api';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const ClassroomPageStudent = () => {
   const { classroomId } = useParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeOffsetMs, setTimeOffsetMs] = useState(0);
@@ -79,13 +81,15 @@ const ClassroomPageStudent = () => {
               onClick={() => navigate('/student-dashboard')}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              ← Back
+              ← {t('common.back')}
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
                 Sa7a7ly
               </p>
-              <h1 className="text-2xl font-bold text-slate-900">Classroom</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {t('common.classroom')}
+              </h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -96,7 +100,7 @@ const ClassroomPageStudent = () => {
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </div>
@@ -119,7 +123,7 @@ const ClassroomPageStudent = () => {
                     Classroom Hub
                   </p>
                   <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
-                    Stay on top of every assignment
+                    {t('classroom.stayOnTop')}
                   </h2>
                 </div>
               </div>
@@ -152,11 +156,11 @@ const ClassroomPageStudent = () => {
 
         {loading ? (
           <div className="text-center py-10">
-            <p className="text-slate-600">Loading assignments...</p>
+            <p className="text-slate-600">{t('common.loading')}</p>
           </div>
         ) : assignments.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dashed border-slate-200 shadow-sm p-10 text-center">
-            <p className="text-slate-600">No assignments available yet.</p>
+            <p className="text-slate-600">{t('classroom.noAssignments')}</p>
             <p className="mt-2 text-sm text-slate-500">
               Check back later or ask your teacher for updates.
             </p>
@@ -165,7 +169,7 @@ const ClassroomPageStudent = () => {
           <div className="space-y-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-2xl font-bold text-slate-900">
-                Assignments
+                {t('common.assignments')}
               </h2>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
                 {assignments.length} total
@@ -189,8 +193,8 @@ const ClassroomPageStudent = () => {
                     {assignment.description}
                   </p>
                   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    <p>Due: {formatDateTime(assignment.dueDate)}</p>
-                    <p>Time left: {getTimeLeft(assignment.dueDate)}</p>
+                    <p>{t('common.due')}: {formatDateTime(assignment.dueDate)}</p>
+                    <p>{t('common.timeLeft')}: {getTimeLeft(assignment.dueDate)}</p>
                   </div>
                   <button
                     onClick={() =>
@@ -198,7 +202,7 @@ const ClassroomPageStudent = () => {
                     }
                     className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white transition hover:bg-emerald-700"
                   >
-                    Submit Assignment
+                    {t('classroom.submitAssignment')}
                   </button>
                 </div>
               ))}

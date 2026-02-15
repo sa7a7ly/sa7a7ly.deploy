@@ -9,6 +9,7 @@ import {
 } from '../services/api';
 import CreateClassroomModal from '../components/CreateClassroomModal';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const TeacherDashboard = () => {
   const [classrooms, setClassrooms] = useState([]);
@@ -20,6 +21,7 @@ const TeacherDashboard = () => {
   const [loadingAssistantCode, setLoadingAssistantCode] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useI18n();
 
   const fetchClassrooms = useCallback(async () => {
     try {
@@ -32,11 +34,11 @@ const TeacherDashboard = () => {
       setClassrooms(teacherClassrooms);
       setError('');
     } catch (err) {
-      setError('Failed to load classrooms');
+      setError(t('errors.failedLoadClassrooms'));
     } finally {
       setLoading(false);
     }
-  }, [user._id]);
+  }, [user._id, t]);
 
   const fetchAssistants = useCallback(async () => {
     try {
@@ -91,18 +93,18 @@ const TeacherDashboard = () => {
               Sa7a7ly Teacher
             </p>
             <h1 className="text-2xl font-bold text-slate-900">
-              Teacher Dashboard
+              {t('dashboards.teacher')}
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
-              Welcome, {user?.name}
+              {t('dashboards.welcome')}, {user?.name}
             </span>
             <button
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
             >
-              Logout
+              {t('common.logout')}
             </button>
           </div>
         </div>
@@ -178,7 +180,7 @@ const TeacherDashboard = () => {
                   Assistants
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  Linked Assistants
+                  {t('common.assistants')}
                 </h2>
               </div>
             </div>
@@ -191,9 +193,7 @@ const TeacherDashboard = () => {
                 disabled={loadingAssistantCode}
                 className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                {loadingAssistantCode
-                  ? 'Loading...'
-                  : 'View My Teacher Assistant Code'}
+                {loadingAssistantCode ? t('common.loading') : t('auth.assistantCode')}
               </button>
             </div>
             {assistantCode && (
@@ -204,7 +204,7 @@ const TeacherDashboard = () => {
             )}
             {assistants.length === 0 ? (
               <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-slate-600">
-                No assistants linked yet.
+                {t('common.noUsersFound')}
               </div>
             ) : (
               <div className="mt-4 space-y-3">
@@ -234,7 +234,7 @@ const TeacherDashboard = () => {
                   My Classes
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  My Classrooms
+                  {t('common.classrooms')}
                 </h2>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -242,13 +242,13 @@ const TeacherDashboard = () => {
                   onClick={() => navigate('/resubmission-requests')}
                   className="px-5 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
                 >
-                  Resubmission Requests
+                  {t('resubmissions.title')}
                 </button>
                 <button
                   onClick={() => setShowModal(true)}
                   className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
                 >
-                  Create Classroom
+                  {t('createClassroom.title')}
                 </button>
               </div>
             </div>
@@ -261,16 +261,16 @@ const TeacherDashboard = () => {
 
         {loading ? (
           <div className="text-center py-10">
-            <p className="text-slate-600">Loading classrooms...</p>
+            <p className="text-slate-600">{t('common.loading')}</p>
           </div>
         ) : classrooms.length === 0 ? (
           <div className="mt-6 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-            <p className="text-slate-600 mb-4">No classrooms yet</p>
+            <p className="text-slate-600 mb-4">{t('common.noClassroomsFound')}</p>
             <button
               onClick={() => setShowModal(true)}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
             >
-              Create your first classroom
+              {t('createClassroom.title')}
             </button>
           </div>
         ) : (
