@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
 import PrivateRoute from './components/PrivateRoute';
 import LanguageToggle from './components/LanguageToggle';
+import Footer from './components/Footer';
 
 // Pages
 import LandingPage from './pages/LandingPage';
@@ -150,6 +151,7 @@ function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <Footer />
         </AuthProvider>
       </I18nProvider>
     </Router>
