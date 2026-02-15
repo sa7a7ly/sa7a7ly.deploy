@@ -6,7 +6,7 @@ const Assignment = require("../models/Assignment");
 const ResubmissionRequest = require("../models/ResubmissionRequest");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
-const { uploadPdfBuffer } = require("../services/cloudinary");
+const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
 
 
 const GEMINI_URL =
@@ -41,14 +41,64 @@ async function callGemini(payload, retries = 2) {
     }
 }
 
+function parseCloudinaryAsset(urlString) {
+    try {
+        const url = new URL(urlString);
+        const parts = url.pathname.split("/").filter(Boolean);
+        const rawIndex = parts.findIndex((p) => p === "raw");
+        if (rawIndex === -1) return null;
+
+        const type = parts[rawIndex + 1] || "upload";
+        let publicIdParts = parts.slice(rawIndex + 2);
+        if (publicIdParts[0] && /^v\d+$/.test(publicIdParts[0])) {
+            publicIdParts = publicIdParts.slice(1);
+        }
+        if (!publicIdParts.length) return null;
+
+        const last = publicIdParts[publicIdParts.length - 1];
+        publicIdParts[publicIdParts.length - 1] = last.replace(/\.pdf$/i, "");
+        return { type, publicId: publicIdParts.join("/") };
+    } catch {
+        return null;
+    }
+}
+
 async function getPdfBuffer(source, fallbackBuffer) {
     if (fallbackBuffer && source == null) {
         return fallbackBuffer;
     }
 
     if (typeof source === "string" && /^https?:\/\//i.test(source)) {
-        const response = await axios.get(source, { responseType: "arraybuffer" });
-        return Buffer.from(response.data);
+        try {
+            const response = await axios.get(source, { responseType: "arraybuffer" });
+            return Buffer.from(response.data);
+        } catch (err) {
+            const status = err?.response?.status;
+            const cloudinaryAsset =
+                status &&
+                [401, 403].includes(status) &&
+                source.includes("res.cloudinary.com")
+                    ? parseCloudinaryAsset(source)
+                    : null;
+
+            if (cloudinaryAsset) {
+                const signedUrl = cloudinary.utils.private_download_url(
+                    cloudinaryAsset.publicId,
+                    "pdf",
+                    {
+                        resource_type: "raw",
+                        type: cloudinaryAsset.type,
+                        expires_at: Math.floor(Date.now() / 1000) + 300,
+                    }
+                );
+                const signedResponse = await axios.get(signedUrl, {
+                    responseType: "arraybuffer",
+                });
+                return Buffer.from(signedResponse.data);
+            }
+
+            throw err;
+        }
     }
 
     if (typeof source === "string") {
