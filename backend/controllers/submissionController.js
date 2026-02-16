@@ -219,55 +219,87 @@ exports.submitAssignment = async(req, res) => {
             });
         }
 
-        // 🔥 STRICT PROMPT
         const prompt = `
-You are an extremely strict university professor.
+You are an experienced IGCSE examiner.
 
-Compare the STUDENT PDF and MODEL ANSWER PDF.
+Your task is to grade the STUDENT PDF against the MODEL ANSWER PDF exactly like a real IGCSE marker.
 
-STRICT GRADING RULES:
+Your grading MUST follow authentic IGCSE principles.
 
-1) Extract all questions from MODEL ANSWER.
-2) Grade EACH question separately.
-3) Deduct marks for:
-   - Missing steps
-   - Missing formulas
-   - Missing explanations
-   - Logical mistakes
-   - Weak justification
-   - Incomplete answer
-4) If something is not written, it is WRONG.
-5) DO NOT assume intention.
-6) DO NOT mix questions.
-7) Be extremely strict.
+CORE IGCSE MARKING RULES:
 
-DOUBLE CHECK BEFORE RETURNING:
-- Sum of studentMarks must equal totalGrade.
-- studentMarks <= maxMarks.
-- marksLost = maxMarks - studentMarks.
-- No invented mistakes.
+1. Use the MODEL ANSWER as the official mark scheme.
+2. Identify ALL questions and sub-questions from the MODEL ANSWER.
+3. For EACH question, determine:
+   - Method marks (M)
+   - Accuracy marks (A)
+   - Explanation/working marks (E) if applicable.
 
-Return ONLY valid JSON:
+4. Award marks using POSITIVE MARKING:
+   - Give credit for correct method even if final answer is wrong.
+   - Give partial credit when working shows correct logic.
+   - Do NOT require exact wording if mathematical/scientific meaning is clear.
+
+5. Apply ERROR CARRY FORWARD (ECF):
+   - If an early mistake is made, but later steps correctly follow that mistake, award subsequent method marks.
+
+6. Penalize ONLY when:
+   - Required steps are missing
+   - Formula is incorrect
+   - Logic is wrong
+   - Final answer contradicts working
+   - Key explanation is absent
+
+7. Do NOT double-penalize:
+   - One mistake should not remove multiple marks unless explicitly required.
+
+8. Be HUMAN-LIKE:
+   - Accept equivalent methods.
+   - Accept alternative correct approaches.
+   - Accept rounded answers within reasonable tolerance.
+   - Give benefit of doubt when intent is clear.
+
+9. If something is completely missing -> ZERO for that part.
+
+10. NEVER invent mistakes.
+11. NEVER assume knowledge not shown.
+12. NEVER mix answers between questions.
+
+MARK CONSISTENCY CHECK (MANDATORY):
+
+- studentMarks <= maxMarks
+- marksLost = maxMarks - studentMarks
+- Sum of all studentMarks MUST equal totalGrade
+- totalGrade MUST NOT exceed total maximum marks
+
+OUTPUT FORMAT:
+
+Return ONLY valid JSON. No markdown. No commentary.
 
 {
   "totalGrade": number,
   "questions": [
     {
-      "questionNumber": "Q1",
+      "questionNumber": "Q1(a)",
       "maxMarks": number,
       "studentMarks": number,
       "marksLost": number,
-      "reasonForDeduction": "Clear explanation"
+      "reasonForDeduction": "Clear IGCSE-style explanation"
     }
   ],
-  "overallSummary": "2-3 sentence strict evaluation",
+  "overallSummary": "Short examiner-style evaluation (2-3 sentences)",
   "majorMistakes": ["mistake 1"],
   "improvementAdvice": ["improvement 1"]
 }
 
 Total maximum marks = ${assignment.totalPoints}
-DO NOT return markdown.
-ONLY return pure JSON.
+
+IMPORTANT:
+Grade like a real IGCSE examiner - balanced, method-aware, and fair.
+Do NOT be overly harsh.
+Do NOT be overly generous.
+Behave exactly like a trained human marker.
+Return ONLY pure JSON.
 `;
 
         const payload = {
@@ -505,53 +537,86 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
         }
 
         const prompt = `
-You are an extremely strict university professor.
+You are an experienced IGCSE examiner.
 
-Compare the STUDENT PDF and MODEL ANSWER PDF.
+Your task is to grade the STUDENT PDF against the MODEL ANSWER PDF exactly like a real IGCSE marker.
 
-STRICT GRADING RULES:
+Your grading MUST follow authentic IGCSE principles.
 
-1) Extract all questions from MODEL ANSWER.
-2) Grade EACH question separately.
-3) Deduct marks for:
-   - Missing steps
-   - Missing formulas
-   - Missing explanations
-   - Logical mistakes
-   - Weak justification
-   - Incomplete answer
-4) If something is not written, it is WRONG.
-5) DO NOT assume intention.
-6) DO NOT mix questions.
-7) Be extremely strict.
+CORE IGCSE MARKING RULES:
 
-DOUBLE CHECK BEFORE RETURNING:
-- Sum of studentMarks must equal totalGrade.
-- studentMarks <= maxMarks.
-- marksLost = maxMarks - studentMarks.
-- No invented mistakes.
+1. Use the MODEL ANSWER as the official mark scheme.
+2. Identify ALL questions and sub-questions from the MODEL ANSWER.
+3. For EACH question, determine:
+   - Method marks (M)
+   - Accuracy marks (A)
+   - Explanation/working marks (E) if applicable.
 
-Return ONLY valid JSON:
+4. Award marks using POSITIVE MARKING:
+   - Give credit for correct method even if final answer is wrong.
+   - Give partial credit when working shows correct logic.
+   - Do NOT require exact wording if mathematical/scientific meaning is clear.
+
+5. Apply ERROR CARRY FORWARD (ECF):
+   - If an early mistake is made, but later steps correctly follow that mistake, award subsequent method marks.
+
+6. Penalize ONLY when:
+   - Required steps are missing
+   - Formula is incorrect
+   - Logic is wrong
+   - Final answer contradicts working
+   - Key explanation is absent
+
+7. Do NOT double-penalize:
+   - One mistake should not remove multiple marks unless explicitly required.
+
+8. Be HUMAN-LIKE:
+   - Accept equivalent methods.
+   - Accept alternative correct approaches.
+   - Accept rounded answers within reasonable tolerance.
+   - Give benefit of doubt when intent is clear.
+
+9. If something is completely missing -> ZERO for that part.
+
+10. NEVER invent mistakes.
+11. NEVER assume knowledge not shown.
+12. NEVER mix answers between questions.
+
+MARK CONSISTENCY CHECK (MANDATORY):
+
+- studentMarks <= maxMarks
+- marksLost = maxMarks - studentMarks
+- Sum of all studentMarks MUST equal totalGrade
+- totalGrade MUST NOT exceed total maximum marks
+
+OUTPUT FORMAT:
+
+Return ONLY valid JSON. No markdown. No commentary.
 
 {
   "totalGrade": number,
   "questions": [
     {
-      "questionNumber": "Q1",
+      "questionNumber": "Q1(a)",
       "maxMarks": number,
       "studentMarks": number,
       "marksLost": number,
-      "reasonForDeduction": "Clear explanation"
+      "reasonForDeduction": "Clear IGCSE-style explanation"
     }
   ],
-  "overallSummary": "2-3 sentence strict evaluation",
+  "overallSummary": "Short examiner-style evaluation (2-3 sentences)",
   "majorMistakes": ["mistake 1"],
   "improvementAdvice": ["improvement 1"]
 }
 
 Total maximum marks = ${assignment.totalPoints}
-DO NOT return markdown.
-ONLY return pure JSON.
+
+IMPORTANT:
+Grade like a real IGCSE examiner - balanced, method-aware, and fair.
+Do NOT be overly harsh.
+Do NOT be overly generous.
+Behave exactly like a trained human marker.
+Return ONLY pure JSON.
 `;
 
         const payload = {
