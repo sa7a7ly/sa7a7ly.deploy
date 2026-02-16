@@ -119,7 +119,7 @@ const translations = {
       noAssignmentsTeacher: 'No assignments yet',
       createFirstAssignment: 'Create your first assignment',
       classroomHub: 'Classroom Hub',
-      stayOnTop: 'Stay on top of every assignment',
+      stayOnTop: 'Stay on top of your classes',
     },
     submit: {
       submitTitle: 'Submit Assignment',
@@ -305,7 +305,7 @@ const translations = {
       noAssignmentsTeacher: 'لا يوجد تكليفات بعد',
       createFirstAssignment: 'أنشئ أول تكليف',
       classroomHub: 'مركز الفصل',
-      stayOnTop: 'تابع كل تكليف بسهولة',
+      stayOnTop: 'تابع فصولك بسهولة',
     },
     submit: {
       submitTitle: 'تسليم التكليف',
