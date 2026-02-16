@@ -60,6 +60,59 @@ const ClassroomSubmissionsPage = () => {
     return grouped;
   }, [submissions]);
 
+  const studentProgress = useMemo(() => {
+    const grouped = {};
+    submissions.forEach((s) => {
+      const name = s.studentId?.name || s.studentName || 'Student';
+      const key = s.studentId?._id || `${name}-${s._id}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          name,
+          grades: [],
+        };
+      }
+      if (typeof s.grade === 'number') {
+        grouped[key].grades.push({
+          value: s.grade,
+          submittedAt: s.submittedAt,
+        });
+      }
+    });
+
+    return Object.values(grouped)
+      .map((student) => {
+        const sorted = student.grades.sort(
+          (a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)
+        );
+        const grades = sorted.map((g) => g.value);
+        const average =
+          grades.length > 0
+            ? Math.round(grades.reduce((sum, v) => sum + v, 0) / grades.length)
+            : null;
+        const latest = grades.length > 0 ? grades[grades.length - 1] : null;
+        return {
+          name: student.name,
+          grades,
+          average,
+          latest,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [submissions]);
+
+  const buildSparkline = (grades) => {
+    if (!grades || grades.length === 0) return '';
+    const max = Math.max(...grades, 1);
+    const min = Math.min(...grades, 0);
+    const span = Math.max(max - min, 1);
+    const points = grades.map((g, index) => {
+      const x = (index / Math.max(grades.length - 1, 1)) * 100;
+      const y = 24 - ((g - min) / span) * 24;
+      return `${x},${y}`;
+    });
+    return `M ${points.join(' L ')}`;
+  };
+
   const toggleFeedback = (id) => {
     setOpenFeedback((prev) => ({
       ...prev,
@@ -151,6 +204,52 @@ const ClassroomSubmissionsPage = () => {
           </div>
         ) : (
           <div className="space-y-6">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                    Progress
+                  </p>
+                  <h3 className="text-2xl font-bold text-slate-900">
+                    Student feedback trend
+                  </h3>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
+                  {studentProgress.length} students
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {studentProgress.map((student) => (
+                  <div
+                    key={student.name}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {student.name}
+                      </p>
+                      <span className="text-xs font-semibold text-emerald-700">
+                        Avg: {student.average ?? 'N/A'}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-xs text-slate-500">
+                        Latest: {student.latest ?? 'N/A'}
+                      </p>
+                      <svg viewBox="0 0 100 24" className="h-6 w-28">
+                        <path
+                          d={buildSparkline(student.grades)}
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             {Object.keys(groupedSubmissions).map((title) => (
               <div
                 key={title}
