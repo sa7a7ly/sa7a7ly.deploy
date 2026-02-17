@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
 import {
   getAssignments,
   getClassroom,
+  getSubmissions,
   submitAssignmentOnBehalf,
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
@@ -14,12 +16,20 @@ const GradeOnBehalfPage = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { t } = useI18n();
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [classroom, setClassroom] = useState(null);
   const [assignments, setAssignments] = useState([]);
+  const [savedFeedbacks, setSavedFeedbacks] = useState([]);
+
   const [studentName, setStudentName] = useState('');
+  const [result, setResult] = useState(null);
+  const [feedbackMeta, setFeedbackMeta] = useState({
+    studentName: '',
+    assignmentTitle: '',
+  });
   const [formData, setFormData] = useState({
     assignmentId: '',
     pdf: null,
@@ -29,12 +39,38 @@ const GradeOnBehalfPage = () => {
     const load = async () => {
       try {
         setLoading(true);
-        const [classroomRes, assignmentsRes] = await Promise.all([
+        const [classroomRes, assignmentsRes, submissionsRes] = await Promise.all([
           getClassroom(classroomId),
           getAssignments(classroomId),
+          getSubmissions(null, classroomId),
         ]);
+
+        const assignmentTitleMap = new Map(
+          (assignmentsRes.data || []).map((a) => [a._id, a.title])
+        );
+
+        const onBehalfSubmissions = (submissionsRes.data || [])
+          .filter(
+            (s) =>
+              s.submittedByRole === 'TEACHER' || s.submittedByRole === 'ASSISTANT'
+          )
+          .map((s) => ({
+            ...s,
+            assignmentTitle:
+              s.assignmentId?.title ||
+              assignmentTitleMap.get(
+                typeof s.assignmentId === 'string'
+                  ? s.assignmentId
+                  : s.assignmentId?._id
+              ) ||
+              'Assignment',
+            studentDisplayName: s.studentName || s.studentId?.name || 'Student',
+          }))
+          .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
         setClassroom(classroomRes.data);
         setAssignments(assignmentsRes.data || []);
+        setSavedFeedbacks(onBehalfSubmissions);
         setError('');
       } catch (err) {
         setError(err.response?.data?.message || t('errors.failedLoadSubmissions'));
@@ -42,6 +78,7 @@ const GradeOnBehalfPage = () => {
         setLoading(false);
       }
     };
+
     if (classroomId) {
       load();
     }
@@ -50,13 +87,6 @@ const GradeOnBehalfPage = () => {
   const handleLogout = () => {
     logout();
     navigate('/');
-  };
-
-  const handleChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
   };
 
   const handleFileChange = (e) => {
@@ -77,15 +107,44 @@ const GradeOnBehalfPage = () => {
       setError(t('common.uploadPdf'));
       return;
     }
+
     try {
       setSubmitting(true);
       setError('');
+      setResult(null);
+      setFeedbackMeta({ studentName: '', assignmentTitle: '' });
+
       const payload = new FormData();
       payload.append('assignmentId', formData.assignmentId);
       payload.append('studentName', studentName.trim());
       payload.append('submittedBy', user._id);
       payload.append('pdf', formData.pdf);
-      await submitAssignmentOnBehalf(payload);
+
+      const response = await submitAssignmentOnBehalf(payload);
+      const createdSubmission = response?.data?.submission || null;
+      setResult(createdSubmission);
+
+      const assignmentTitle =
+        assignments.find((a) => a._id === formData.assignmentId)?.title ||
+        'Assignment';
+      const normalizedStudentName = studentName.trim();
+      setFeedbackMeta({
+        studentName: normalizedStudentName,
+        assignmentTitle,
+      });
+
+      if (createdSubmission) {
+        setSavedFeedbacks((prev) => [
+          {
+            ...createdSubmission,
+            assignmentTitle,
+            studentDisplayName:
+              normalizedStudentName || createdSubmission.studentName || 'Student',
+          },
+          ...prev,
+        ]);
+      }
+
       setFormData({ assignmentId: '', pdf: null });
       setStudentName('');
     } catch (err) {
@@ -93,6 +152,93 @@ const GradeOnBehalfPage = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const buildFeedbackPdf = ({ student, assignmentTitle, grade, feedback }) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 16;
+    let y = 20;
+
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 0, pageWidth, 38, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.line(0, 38, pageWidth, 38);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Assignment Feedback', margin, 20);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Sa7a7ly', margin, 28);
+
+    y = 50;
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, 24, 3, 3, 'S');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Student', margin + 4, y + 9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(student || 'N/A', margin + 4, y + 18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Assignment', margin + 80, y + 9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(assignmentTitle || 'N/A', margin + 80, y + 18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Grade', pageWidth - margin - 26, y + 9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(String(grade ?? 'N/A'), pageWidth - margin - 26, y + 18);
+
+    y += 34;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Feedback Summary', margin, y);
+    y += 6;
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, pageHeight - y - margin, 3, 3, 'S');
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+
+    const feedbackLines = doc.splitTextToSize(
+      feedback || 'No feedback provided.',
+      pageWidth - margin * 2 - 8
+    );
+    feedbackLines.forEach((line) => {
+      if (y > pageHeight - margin - 6) {
+        doc.addPage();
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(
+          margin,
+          margin,
+          pageWidth - margin * 2,
+          pageHeight - margin * 2,
+          3,
+          3,
+          'S'
+        );
+        y = margin + 8;
+      }
+      doc.text(line, margin + 4, y);
+      y += 6;
+    });
+
+    return doc;
+  };
+
+  const downloadFeedbackPdf = ({
+    student,
+    assignmentTitle,
+    grade,
+    feedback,
+  }) => {
+    const doc = buildFeedbackPdf({ student, assignmentTitle, grade, feedback });
+    const safeTitle = (assignmentTitle || 'assignment')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+    doc.save(`feedback-${safeTitle || 'assignment'}.pdf`);
   };
 
   return (
@@ -151,9 +297,7 @@ const GradeOnBehalfPage = () => {
         </div>
 
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <p className="mt-1 text-sm text-slate-600">
-            {t('common.uploadPdf')}
-          </p>
+          <p className="mt-1 text-sm text-slate-600">{t('common.uploadPdf')}</p>
           <form onSubmit={handleSubmit} className="mt-4 grid gap-3 md:grid-cols-4">
             <input
               type="text"
@@ -164,7 +308,9 @@ const GradeOnBehalfPage = () => {
             />
             <select
               value={formData.assignmentId}
-              onChange={(e) => handleChange('assignmentId', e.target.value)}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, assignmentId: e.target.value }))
+              }
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
             >
               <option value="">{t('common.selectAssignment')}</option>
@@ -190,6 +336,85 @@ const GradeOnBehalfPage = () => {
           </form>
         </section>
 
+        {result && (
+          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <h3 className="text-lg font-bold text-slate-900">AI Grading Result</h3>
+            <p className="mt-2 text-sm text-slate-700">
+              Grade: <span className="font-semibold">{result.grade}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                downloadFeedbackPdf({
+                  student: feedbackMeta.studentName,
+                  assignmentTitle: feedbackMeta.assignmentTitle,
+                  grade: result.grade,
+                  feedback: result.feedback,
+                })
+              }
+              className="mt-1 inline-block text-sm font-semibold text-emerald-700 hover:text-emerald-800"
+            >
+              {t('common.downloadPdf')}
+            </button>
+          </section>
+        )}
+
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+          <h3 className="text-lg font-bold text-slate-900">Saved Feedbacks</h3>
+          {savedFeedbacks.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-600">
+              No saved grade-on-behalf feedbacks yet.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {savedFeedbacks.map((submission) => (
+                <div
+                  key={submission._id}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div className="grid gap-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                        Assignment
+                      </p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {submission.assignmentTitle}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                        Student
+                      </p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {submission.studentDisplayName}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadFeedbackPdf({
+                          student:
+                            submission.studentDisplayName ||
+                            submission.studentName ||
+                            submission.studentId?.name,
+                          assignmentTitle:
+                            submission.assignmentTitle ||
+                            submission.assignmentId?.title,
+                          grade: submission.grade,
+                          feedback: submission.feedback,
+                        })
+                      }
+                      className="mt-1 inline-flex w-fit items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      {t('common.downloadPdf')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
             {error}
@@ -197,9 +422,7 @@ const GradeOnBehalfPage = () => {
         )}
 
         {loading && (
-          <div className="text-center py-8 text-slate-600">
-            {t('common.loading')}
-          </div>
+          <div className="text-center py-8 text-slate-600">{t('common.loading')}</div>
         )}
       </div>
     </div>
@@ -207,3 +430,4 @@ const GradeOnBehalfPage = () => {
 };
 
 export default GradeOnBehalfPage;
+

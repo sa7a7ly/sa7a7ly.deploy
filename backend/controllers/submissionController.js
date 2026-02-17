@@ -18,6 +18,7 @@ const DETERMINISTIC_GENERATION_CONFIG = {
     topP: 0.01,
     responseMimeType: "application/json",
 };
+const WHATSAPP_WEBHOOK_URL = process.env.WHATSAPP_WEBHOOK_URL;
 
 function buildDeterministicPayload(parts) {
     return {
@@ -139,6 +140,148 @@ async function getPdfBuffer(source, fallbackBuffer) {
     }
 
     throw new Error("Unable to read PDF");
+}
+
+async function sendWhatsappGradeNotification({
+    to,
+    studentName,
+    assignmentTitle,
+    grade,
+    totalPoints,
+    feedback,
+}) {
+    if (!WHATSAPP_WEBHOOK_URL || !to) {
+        return { sent: false, reason: "disabled_or_missing_number" };
+    }
+
+    try {
+        await axios.post(
+            WHATSAPP_WEBHOOK_URL,
+            {
+                to,
+                studentName,
+                assignmentTitle,
+                grade,
+                totalPoints,
+                feedback,
+            },
+            { timeout: 20000 }
+        );
+        return { sent: true };
+    } catch (err) {
+        console.error("WHATSAPP ERROR:", err?.response?.data || err.message);
+        return {
+            sent: false,
+            reason: err?.response?.data?.message || err.message || "send_failed",
+        };
+    }
+}
+
+function createFeedbackPdfBuffer({
+    studentName,
+    assignmentTitle,
+    grade,
+    totalPoints,
+    feedback,
+}) {
+    const headerLines = [
+        "Assignment Feedback",
+        "Sa7a7ly",
+        "",
+        `Student: ${studentName || "N/A"}`,
+        `Assignment: ${assignmentTitle || "N/A"}`,
+        `Grade: ${String(grade ?? "N/A")}${totalPoints != null ? ` / ${String(totalPoints)}` : ""}`,
+        "",
+        "Feedback Summary",
+        "",
+    ];
+
+    const source = [...headerLines, ...(String(feedback || "No feedback provided.").split(/\r?\n/))].join("\n");
+    const maxCharsPerLine = 90;
+    const rawLines = source.split(/\r?\n/);
+    const lines = [];
+
+    rawLines.forEach((line) => {
+        if (!line) {
+            lines.push("");
+            return;
+        }
+        let start = 0;
+        while (start < line.length) {
+            lines.push(line.slice(start, start + maxCharsPerLine));
+            start += maxCharsPerLine;
+        }
+    });
+
+    const escaped = lines
+        .map((line) => line.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"))
+        .map((line, idx) => {
+            if (idx === 0) return `(${line}) Tj`;
+            return `0 -14 Td (${line}) Tj`;
+        })
+        .join("\n");
+
+    const stream = `BT
+/F1 10 Tf
+50 790 Td
+${escaped}
+ET`;
+
+    const streamBytes = Buffer.from(stream, "latin1");
+    const header = "%PDF-1.4\n";
+    const obj1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+    const obj2 = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+    const obj3 = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
+    const obj4 = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+    const obj5Start = `5 0 obj\n<< /Length ${streamBytes.length} >>\nstream\n`;
+    const obj5End = "\nendstream\nendobj\n";
+
+    const parts = [header, obj1, obj2, obj3, obj4, obj5Start];
+    let offset = 0;
+    const offsets = [0];
+
+    function addOffset(part) {
+        offset += Buffer.byteLength(part, "latin1");
+    }
+
+    addOffset(header);
+    offsets.push(offset);
+    addOffset(obj1);
+    offsets.push(offset);
+    addOffset(obj2);
+    offsets.push(offset);
+    addOffset(obj3);
+    offsets.push(offset);
+    addOffset(obj4);
+    offsets.push(offset);
+    addOffset(obj5Start);
+    offset += streamBytes.length;
+    addOffset(obj5End);
+
+    const xrefStart = offset;
+    const xref = [
+        "xref\n0 6\n",
+        "0000000000 65535 f \n",
+        `${String(offsets[1]).padStart(10, "0")} 00000 n \n`,
+        `${String(offsets[2]).padStart(10, "0")} 00000 n \n`,
+        `${String(offsets[3]).padStart(10, "0")} 00000 n \n`,
+        `${String(offsets[4]).padStart(10, "0")} 00000 n \n`,
+        `${String(offsets[5]).padStart(10, "0")} 00000 n \n`,
+        "trailer\n<< /Size 6 /Root 1 0 R >>\n",
+        `startxref\n${xrefStart}\n%%EOF`,
+    ].join("");
+
+    return Buffer.concat([
+        Buffer.from(header, "latin1"),
+        Buffer.from(obj1, "latin1"),
+        Buffer.from(obj2, "latin1"),
+        Buffer.from(obj3, "latin1"),
+        Buffer.from(obj4, "latin1"),
+        Buffer.from(obj5Start, "latin1"),
+        streamBytes,
+        Buffer.from(obj5End, "latin1"),
+        Buffer.from(xref, "latin1"),
+    ]);
 }
 
 exports.submitAssignment = async(req, res) => {
@@ -439,11 +582,15 @@ ONLY return pure JSON.
 // Submit on behalf (teacher/assistant)
 exports.submitAssignmentOnBehalf = async (req, res) => {
     try {
-        const { assignmentId, studentId, studentName, submittedBy } = req.body;
+        const { assignmentId, studentId, studentName, submittedBy, studentWhatsapp } = req.body;
         const normalizedStudentName = (studentName || "").trim();
+        const normalizedStudentWhatsapp = (studentWhatsapp || "").trim();
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
+        }
+        if (!req.file.buffer) {
+            return res.status(400).json({ message: "Invalid PDF upload" });
         }
         if (!assignmentId || !submittedBy || (!studentId && !normalizedStudentName)) {
             return res.status(400).json({
@@ -478,12 +625,39 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
         }
 
-        const existingSubmission = studentId
-            ? await Submission.findOne({ assignmentId, studentId }).sort({ submittedAt: -1 })
+        let matchedStudent = null;
+        let resolvedStudentId = studentId || null;
+        if (resolvedStudentId && !classroom.studentIds.some((id) => id.toString() === resolvedStudentId.toString())) {
+            return res.status(400).json({ message: "Student does not belong to this classroom" });
+        }
+
+        if (!resolvedStudentId && normalizedStudentName) {
+            const students = await User.find({
+                _id: { $in: classroom.studentIds },
+                role: "STUDENT",
+            }).select("_id name whatsappNumber");
+            const normalizedSearch = normalizedStudentName.toLowerCase();
+            matchedStudent = students.find(
+                (s) => (s.name || "").trim().toLowerCase() === normalizedSearch
+            ) || null;
+            if (matchedStudent) {
+                resolvedStudentId = matchedStudent._id;
+            }
+        }
+
+        const targetStudent = resolvedStudentId
+            ? await User.findOne({ _id: resolvedStudentId, role: "STUDENT" }).select("name whatsappNumber")
+            : matchedStudent;
+
+        const effectiveStudentName = normalizedStudentName || targetStudent?.name || "";
+        const effectiveWhatsapp = normalizedStudentWhatsapp || targetStudent?.whatsappNumber || "";
+
+        const existingSubmission = resolvedStudentId
+            ? await Submission.findOne({ assignmentId, studentId: resolvedStudentId }).sort({ submittedAt: -1 })
             : null;
 
-        const latestRequest = studentId
-            ? await ResubmissionRequest.findOne({ assignmentId, studentId }).sort({ createdAt: -1 })
+        const latestRequest = resolvedStudentId
+            ? await ResubmissionRequest.findOne({ assignmentId, studentId: resolvedStudentId }).sort({ createdAt: -1 })
             : null;
 
         if (
@@ -499,8 +673,8 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
             });
         }
 
-        const studentPdf = fs.readFileSync(req.file.path);
-        const modelPdf = fs.readFileSync(assignment.modelAnswerPdfPath);
+        const studentPdf = req.file.buffer;
+        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
 
         const studentHash = crypto
             .createHash("sha256")
@@ -512,16 +686,30 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
+            const uploadedSubmission = await uploadPdfBuffer(
+                req.file.buffer,
+                "sa7a7ly/submissions"
+            );
+            const identicalFeedback = "Identical to model answer. Full marks awarded.";
             const submission = await Submission.create({
                 assignmentId,
-                studentId: studentId || null,
-                studentName: normalizedStudentName,
-                pdfPath: req.file.path,
+                studentId: resolvedStudentId || null,
+                studentName: effectiveStudentName,
+                pdfPath: uploadedSubmission.secure_url,
                 grade: assignment.totalPoints,
-                feedback: "Identical to model answer. Full marks awarded.",
+                feedback: identicalFeedback,
                 submittedBy: staff._id,
                 submittedByRole: staff.role,
                 gradedAt: new Date(),
+            });
+
+            const whatsapp = await sendWhatsappGradeNotification({
+                to: effectiveWhatsapp,
+                studentName: effectiveStudentName,
+                assignmentTitle: assignment.title,
+                grade: assignment.totalPoints,
+                totalPoints: assignment.totalPoints,
+                feedback: submission.feedback,
             });
 
             if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
@@ -532,6 +720,7 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
 
             return res.status(201).json({
                 submission,
+                whatsapp,
                 alreadySubmitted: false,
                 resubmissionRequest: latestRequest || null,
             });
@@ -684,16 +873,29 @@ ONLY return pure JSON.
             });
         }
 
+        const uploadedSubmission = await uploadPdfBuffer(
+            req.file.buffer,
+            "sa7a7ly/submissions"
+        );
         const submission = await Submission.create({
             assignmentId,
-            studentId: studentId || null,
-            studentName: normalizedStudentName,
-            pdfPath: req.file.path,
+            studentId: resolvedStudentId || null,
+            studentName: effectiveStudentName,
+            pdfPath: uploadedSubmission.secure_url,
             grade: result.totalGrade,
             feedback: feedbackText.trim(),
             submittedBy: staff._id,
             submittedByRole: staff.role,
             gradedAt: new Date(),
+        });
+
+        const whatsapp = await sendWhatsappGradeNotification({
+            to: effectiveWhatsapp,
+            studentName: effectiveStudentName,
+            assignmentTitle: assignment.title,
+            grade: result.totalGrade,
+            totalPoints: assignment.totalPoints,
+            feedback: feedbackText.trim(),
         });
 
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
@@ -704,6 +906,7 @@ ONLY return pure JSON.
 
         res.status(201).json({
             submission,
+            whatsapp,
             alreadySubmitted: false,
             resubmissionRequest: latestRequest || null,
         });
