@@ -12,6 +12,19 @@ const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
 const GEMINI_URL =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
     process.env.GEMINI_API_KEY;
+const DETERMINISTIC_GENERATION_CONFIG = {
+    temperature: 0,
+    topK: 1,
+    topP: 0.01,
+    responseMimeType: "application/json",
+};
+
+function buildDeterministicPayload(parts) {
+    return {
+        contents: [{ parts }],
+        generationConfig: DETERMINISTIC_GENERATION_CONFIG,
+    };
+}
 
 // Helper: Call Gemini with retry
 async function callGemini(payload, retries = 2) {
@@ -254,6 +267,12 @@ Do NOT mix questions.
 
 Be strict, but allow partial credit for partially correct reasoning.
 
+Use one fixed standard for all students in this assignment.
+
+Do not change strictness between submissions.
+
+Do not change question max marks between students.
+
 DOUBLE CHECK BEFORE RETURNING:
 
 Sum of studentMarks must equal totalGrade.
@@ -288,25 +307,21 @@ DO NOT return markdown.
 ONLY return pure JSON.
 `;
 
-        const payload = {
-            contents: [{
-                parts: [
-                    { text: prompt },
-                    {
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: studentPdf.toString("base64"),
-                        },
-                    },
-                    {
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: modelPdf.toString("base64"),
-                        },
-                    },
-                ],
-            }, ],
-        };
+        const payload = buildDeterministicPayload([
+            { text: prompt },
+            {
+                inlineData: {
+                    mimeType: "application/pdf",
+                    data: studentPdf.toString("base64"),
+                },
+            },
+            {
+                inlineData: {
+                    mimeType: "application/pdf",
+                    data: modelPdf.toString("base64"),
+                },
+            },
+        ]);
 
         let aiText = await callGemini(payload);
 
@@ -523,107 +538,95 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
         }
 
         const prompt = `
-You are an experienced IGCSE examiner.
+You are a strict university professor.
 
-Your task is to grade the STUDENT PDF against the MODEL ANSWER PDF exactly like a real IGCSE marker.
+Compare the STUDENT PDF and MODEL ANSWER PDF.
 
-Your grading MUST follow authentic IGCSE principles.
+GRADING RULES:
 
-CORE IGCSE MARKING RULES:
+Extract all questions from MODEL ANSWER.
 
-1. Use the MODEL ANSWER as the official mark scheme.
-2. Identify ALL questions and sub-questions from the MODEL ANSWER.
-3. For EACH question, determine:
-   - Method marks (M)
-   - Accuracy marks (A)
-   - Explanation/working marks (E) if applicable.
+Grade EACH question separately.
 
-4. Award marks using POSITIVE MARKING:
-   - Give credit for correct method even if final answer is wrong.
-   - Give partial credit when working shows correct logic.
-   - Do NOT require exact wording if mathematical/scientific meaning is clear.
+Deduct marks for:
 
-5. Apply ERROR CARRY FORWARD (ECF):
-   - If an early mistake is made, but later steps correctly follow that mistake, award subsequent method marks.
+Missing important steps
 
-6. Penalize ONLY when:
-   - Required steps are missing
-   - Formula is incorrect
-   - Logic is wrong
-   - Final answer contradicts working
-   - Key explanation is absent
+Missing key formulas
 
-7. Do NOT double-penalize:
-   - One mistake should not remove multiple marks unless explicitly required.
+Missing core explanations
 
-8. Be HUMAN-LIKE:
-   - Accept equivalent methods.
-   - Accept alternative correct approaches.
-   - Accept rounded answers within reasonable tolerance.
-   - Give benefit of doubt when intent is clear.
+Logical mistakes
 
-9. If something is completely missing -> ZERO for that part.
+Weak justification
 
-10. NEVER invent mistakes.
-11. NEVER assume knowledge not shown.
-12. NEVER mix answers between questions.
+Incomplete answers
 
-MARK CONSISTENCY CHECK (MANDATORY):
+Minor wording differences or small presentation issues should NOT automatically lose marks if the meaning is clear.
 
-- studentMarks <= maxMarks
-- marksLost = maxMarks - studentMarks
-- Sum of all studentMarks MUST equal totalGrade
-- totalGrade MUST NOT exceed total maximum marks
+If a required concept or step is completely absent, it is WRONG.
 
-OUTPUT FORMAT:
+Do NOT assume intention.
 
-Return ONLY valid JSON. No markdown. No commentary.
+Do NOT mix questions.
+
+Be strict, but allow partial credit for partially correct reasoning.
+
+Use one fixed standard for all students in this assignment.
+
+Do not change strictness between submissions.
+
+Do not change question max marks between students.
+
+DOUBLE CHECK BEFORE RETURNING:
+
+Sum of studentMarks must equal totalGrade.
+
+studentMarks <= maxMarks.
+
+marksLost = maxMarks - studentMarks.
+
+No invented mistakes.
+
+Return ONLY valid JSON:
 
 {
-  "totalGrade": number,
-  "questions": [
-    {
-      "questionNumber": "Q1(a)",
-      "maxMarks": number,
-      "studentMarks": number,
-      "marksLost": number,
-      "reasonForDeduction": "Clear IGCSE-style explanation"
-    }
-  ],
-  "overallSummary": "Short examiner-style evaluation (2-3 sentences)",
-  "majorMistakes": ["mistake 1"],
-  "improvementAdvice": ["improvement 1"]
+"totalGrade": number,
+"questions": [
+{
+"questionNumber": "Q1",
+"maxMarks": number,
+"studentMarks": number,
+"marksLost": number,
+"reasonForDeduction": "Clear explanation"
+}
+],
+"overallSummary": "2-3 sentence strict evaluation",
+"majorMistakes": ["mistake 1"],
+"improvementAdvice": ["improvement 1"]
 }
 
 Total maximum marks = ${assignment.totalPoints}
 
-IMPORTANT:
-Grade like a real IGCSE examiner - balanced, method-aware, and fair.
-Do NOT be overly harsh.
-Do NOT be overly generous.
-Behave exactly like a trained human marker.
-Return ONLY pure JSON.
+DO NOT return markdown.
+ONLY return pure JSON.
 `;
 
-        const payload = {
-            contents: [{
-                parts: [
-                    { text: prompt },
-                    {
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: studentPdf.toString("base64"),
-                        },
-                    },
-                    {
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: modelPdf.toString("base64"),
-                        },
-                    },
-                ],
-            }, ],
-        };
+        const payload = buildDeterministicPayload([
+            { text: prompt },
+            {
+                inlineData: {
+                    mimeType: "application/pdf",
+                    data: studentPdf.toString("base64"),
+                },
+            },
+            {
+                inlineData: {
+                    mimeType: "application/pdf",
+                    data: modelPdf.toString("base64"),
+                },
+            },
+        ]);
 
         let aiText = await callGemini(payload);
         const cleaned = aiText.replace(/```json/gi, "").replace(/```/g, "").trim();

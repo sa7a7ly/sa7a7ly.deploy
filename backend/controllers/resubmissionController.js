@@ -9,6 +9,10 @@ exports.createResubmissionRequest = async (req, res) => {
     const { assignmentId, reason } = req.body;
     const studentId = req.user?.userId;
 
+    if (req.user?.role !== 'STUDENT') {
+      return res.status(403).json({ message: 'Only students can request resubmission' });
+    }
+
     if (!assignmentId || !studentId) {
       return res.status(400).json({ message: 'Assignment and student are required' });
     }
@@ -64,7 +68,9 @@ exports.getResubmissionRequests = async (req, res) => {
     }
 
     let classrooms = [];
-    if (user.role === 'TEACHER') {
+    if (user.role === 'ADMIN') {
+      classrooms = await Classroom.find({}).select('_id');
+    } else if (user.role === 'TEACHER') {
       classrooms = await Classroom.find({ teacherId: userId }).select('_id');
     } else if (user.role === 'ASSISTANT') {
       classrooms = await Classroom.find({ assistantIds: userId }).select('_id');

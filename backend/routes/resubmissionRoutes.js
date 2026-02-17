@@ -6,7 +6,7 @@ const { requireRole } = require('../middleware/roleMiddleware');
 
 router.use(authenticateToken);
 
-router.post('/', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), resubmissionController.createResubmissionRequest);
+router.post('/', requireRole('STUDENT'), resubmissionController.createResubmissionRequest);
 router.get('/', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), resubmissionController.getResubmissionRequests);
 router.patch('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), resubmissionController.updateResubmissionRequest);
 
