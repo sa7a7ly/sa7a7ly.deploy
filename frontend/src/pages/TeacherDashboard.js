@@ -22,6 +22,7 @@ const TeacherDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { t } = useI18n();
+  const teacherId = user?._id || '';
   const subscriptionEnd = user?.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null;
   const subscriptionActive =
     user?.subscriptionStatus === 'ACTIVE' ||
@@ -46,11 +47,16 @@ const TeacherDashboard = () => {
     : t('subscription.inactiveCta');
 
   const fetchClassrooms = useCallback(async () => {
+    if (!teacherId) {
+      setClassrooms([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const response = await getClassrooms();
       const teacherClassrooms = response.data.filter(
-        (c) => c.teacherId.toString() === user._id
+        (c) => c.teacherId.toString() === teacherId
       );
 
       setClassrooms(teacherClassrooms);
@@ -60,30 +66,37 @@ const TeacherDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [user._id, t]);
+  }, [teacherId, t]);
 
   const fetchAssistants = useCallback(async () => {
+    if (!teacherId) {
+      setAssistants([]);
+      return;
+    }
     try {
-      const response = await getTeacherAssistants(user._id);
+      const response = await getTeacherAssistants(teacherId);
       setAssistants(response.data);
     } catch (err) {
       console.error('Failed to load assistants:', err);
     }
-  }, [user._id]);
+  }, [teacherId]);
 
   useEffect(() => {
-    fetchClassrooms();
-    fetchAssistants();
-  }, [fetchClassrooms, fetchAssistants]);
+    if (teacherId) {
+      fetchClassrooms();
+      fetchAssistants();
+    }
+  }, [teacherId, fetchClassrooms, fetchAssistants]);
 
   const handleCreateClassroom = async (classroomData) => {
+    if (!canManage || !teacherId) return;
     try {
       await createClassroom({
         name: classroomData.name,
-        teacherId: user._id,
+        teacherId,
       });
       setShowModal(false);
-      fetchClassrooms();
+      await fetchClassrooms();
     } catch (err) {
       console.error('Failed to create classroom:', err);
     }
@@ -95,10 +108,12 @@ const TeacherDashboard = () => {
   };
 
   const handleViewAssistantCode = async () => {
+    if (!teacherId) return;
     try {
       setLoadingAssistantCode(true);
-      const response = await getTeacherAssistantCode(user._id);
+      const response = await getTeacherAssistantCode(teacherId);
       setAssistantCode(response.data?.assistantCode || '');
+      setError('');
     } catch (err) {
       setError('Failed to load teacher assistant code');
     } finally {
@@ -312,6 +327,7 @@ const TeacherDashboard = () => {
             <button
               onClick={() => setShowModal(true)}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
+              disabled={!canManage}
             >
               {t('createClassroom.title')}
             </button>
