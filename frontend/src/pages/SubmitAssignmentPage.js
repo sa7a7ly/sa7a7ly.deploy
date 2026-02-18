@@ -11,18 +11,68 @@ import { jsPDF } from 'jspdf';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
 
+const countArabicChars = (value) =>
+  (String(value || '').match(/[\u0600-\u06FF]/g) || []).length;
+
+const recoverArabicMojibake = (value) => {
+  const text = String(value || '');
+  if (!text) return text;
+  if (!/[þÿØÙ]/.test(text)) return text;
+
+  const bytes = Uint8Array.from(text, (ch) => ch.charCodeAt(0) & 0xff);
+  const candidates = [text];
+
+  try {
+    candidates.push(new TextDecoder('utf-8').decode(bytes));
+  } catch (_) {}
+  try {
+    candidates.push(new TextDecoder('utf-16le').decode(bytes));
+  } catch (_) {}
+  try {
+    if (bytes.length % 2 === 0) {
+      const swapped = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i += 2) {
+        swapped[i] = bytes[i + 1];
+        swapped[i + 1] = bytes[i];
+      }
+      candidates.push(new TextDecoder('utf-16le').decode(swapped));
+    }
+  } catch (_) {}
+
+  let best = text;
+  let bestScore = countArabicChars(text);
+  candidates.forEach((candidate) => {
+    const score = countArabicChars(candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  });
+  return best;
+};
+
+
 const parseFeedbackSections = (feedbackText) => {
-  const text = String(feedbackText || '');
+  const text = recoverArabicMojibake(feedbackText);
+  const hasArabic = /[\u0600-\u06FF]/.test(text);
   const questionsMatch = text.match(
-    /Question Breakdown:\s*([\s\S]*?)(?:\n\s*Overall Summary:|$)/i
+    hasArabic
+      ? /(?:تفصيل الدرجات(?: لكل سؤال)?):\s*([\s\S]*?)(?:\n\s*(?:التقييم العام):|$)/i
+      : /Question Breakdown:\s*([\s\S]*?)(?:\n\s*Overall Summary:|$)/i
   );
   const summaryMatch = text.match(
-    /Overall Summary:\s*([\s\S]*?)(?:\n\s*Major Mistakes:|\n\s*How To Improve:|$)/i
+    hasArabic
+      ? /التقييم العام:\s*([\s\S]*?)(?:\n\s*أهم الأخطاء:|\n\s*كيفية التحسين:|$)/i
+      : /Overall Summary:\s*([\s\S]*?)(?:\n\s*Major Mistakes:|\n\s*How To Improve:|$)/i
   );
   const mistakesMatch = text.match(
-    /Major Mistakes:\s*([\s\S]*?)(?:\n\s*How To Improve:|$)/i
+    hasArabic
+      ? /أهم الأخطاء:\s*([\s\S]*?)(?:\n\s*كيفية التحسين:|$)/i
+      : /Major Mistakes:\s*([\s\S]*?)(?:\n\s*How To Improve:|$)/i
   );
-  const improvementsMatch = text.match(/How To Improve:\s*([\s\S]*?)$/i);
+  const improvementsMatch = text.match(
+    hasArabic ? /كيفية التحسين:\s*([\s\S]*?)$/i : /How To Improve:\s*([\s\S]*?)$/i
+  );
 
   const toList = (block) =>
     String(block || '')
@@ -40,12 +90,24 @@ const parseFeedbackSections = (feedbackText) => {
 
     return chunks.map((chunk) => {
       const lines = chunk.split('\n').map((l) => l.trim()).filter(Boolean);
-      const questionNumber = lines[0] || 'Question';
-      const maxMarks = (chunk.match(/Max Marks:\s*([^\n]+)/i) || [])[1] || 'N/A';
+      const questionNumber = lines[0] || (hasArabic ? 'سؤال' : 'Question');
+      const maxMarks =
+        (chunk.match(hasArabic ? /الدرجة الكلية:\s*([^\n]+)/i : /Max Marks:\s*([^\n]+)/i) || [])[1] ||
+        'N/A';
       const studentMarks =
-        (chunk.match(/Your Marks:\s*([^\n]+)/i) || [])[1] || 'N/A';
-      const marksLost = (chunk.match(/Marks Lost:\s*([^\n]+)/i) || [])[1] || 'N/A';
-      const reason = (chunk.match(/Reason:\s*([\s\S]*)$/i) || [])[1] || '';
+        (
+          chunk.match(
+            hasArabic ? /درجتك:\s*([^\n]+)/i : /Your Marks:\s*([^\n]+)/i
+          ) || []
+        )[1] || 'N/A';
+      const marksLost =
+        (
+          chunk.match(
+            hasArabic ? /الدرجات المفقودة:\s*([^\n]+)/i : /Marks Lost:\s*([^\n]+)/i
+          ) || []
+        )[1] || 'N/A';
+      const reason =
+        (chunk.match(hasArabic ? /سبب الخصم:\s*([\s\S]*)$/i : /Reason:\s*([\s\S]*)$/i) || [])[1] || '';
       return {
         questionNumber,
         maxMarks: String(maxMarks).trim(),
@@ -373,6 +435,7 @@ const SubmitAssignmentPage = () => {
     if (!result) {
       return;
     }
+    const feedbackText = recoverArabicMojibake(result.feedback || '');
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -438,7 +501,7 @@ const SubmitAssignmentPage = () => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     const feedbackLines = doc.splitTextToSize(
-      result.feedback || 'No feedback provided.',
+      feedbackText || 'No feedback provided.',
       pageWidth - margin * 2 - 8
     );
     feedbackLines.forEach((line) => {

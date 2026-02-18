@@ -18,7 +18,6 @@ const DETERMINISTIC_GENERATION_CONFIG = {
     topP: 0.01,
     responseMimeType: "application/json",
 };
-const WHATSAPP_WEBHOOK_URL = process.env.WHATSAPP_WEBHOOK_URL;
 
 function buildDeterministicPayload(parts) {
     return {
@@ -94,11 +93,10 @@ async function getPdfBuffer(source, fallbackBuffer) {
         } catch (err) {
             const status = err?.response?.status;
             const cloudinaryAsset =
-                status &&
-                [401, 403].includes(status) &&
-                source.includes("res.cloudinary.com")
-                    ? parseCloudinaryAsset(source)
-                    : null;
+                status && [401, 403].includes(status) &&
+                source.includes("res.cloudinary.com") ?
+                parseCloudinaryAsset(source) :
+                null;
 
             if (cloudinaryAsset) {
                 let lastError = err;
@@ -108,8 +106,7 @@ async function getPdfBuffer(source, fallbackBuffer) {
                     try {
                         const signedUrl = cloudinary.utils.private_download_url(
                             candidate,
-                            "pdf",
-                            {
+                            "pdf", {
                                 resource_type: "raw",
                                 type: cloudinaryAsset.type,
                                 expires_at: Math.floor(Date.now() / 1000) + 300,
@@ -142,146 +139,152 @@ async function getPdfBuffer(source, fallbackBuffer) {
     throw new Error("Unable to read PDF");
 }
 
-async function sendWhatsappGradeNotification({
-    to,
-    studentName,
-    assignmentTitle,
-    grade,
-    totalPoints,
-    feedback,
-}) {
-    if (!WHATSAPP_WEBHOOK_URL || !to) {
-        return { sent: false, reason: "disabled_or_missing_number" };
-    }
+async function detectPdfLanguage(studentPdf) {
+    const prompt = `
+Detect the primary language of the STUDENT PDF.
+Return ONLY valid JSON:
+{
+"detectedLanguage": "arabic or english"
+}
+DO NOT return markdown.
+ONLY return pure JSON.
+`;
+
+    const payload = buildDeterministicPayload([
+        { text: prompt },
+        {
+            inlineData: {
+                mimeType: "application/pdf",
+                data: studentPdf.toString("base64"),
+            },
+        },
+    ]);
 
     try {
-        await axios.post(
-            WHATSAPP_WEBHOOK_URL,
-            {
-                to,
-                studentName,
-                assignmentTitle,
-                grade,
-                totalPoints,
-                feedback,
-            },
-            { timeout: 20000 }
-        );
-        return { sent: true };
-    } catch (err) {
-        console.error("WHATSAPP ERROR:", err?.response?.data || err.message);
-        return {
-            sent: false,
-            reason: err?.response?.data?.message || err.message || "send_failed",
-        };
+        const aiText = await callGemini(payload);
+        const cleaned = aiText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        const result = JSON.parse(cleaned);
+        return String(result?.detectedLanguage || "").toLowerCase().includes("arabic");
+    } catch {
+        return false;
     }
 }
 
-function createFeedbackPdfBuffer({
-    studentName,
-    assignmentTitle,
-    grade,
-    totalPoints,
-    feedback,
-}) {
-    const headerLines = [
-        "Assignment Feedback",
-        "Sa7a7ly",
-        "",
-        `Student: ${studentName || "N/A"}`,
-        `Assignment: ${assignmentTitle || "N/A"}`,
-        `Grade: ${String(grade ?? "N/A")}${totalPoints != null ? ` / ${String(totalPoints)}` : ""}`,
-        "",
-        "Feedback Summary",
-        "",
+function isArabicResult(result) {
+    const languageText = String(result?.detectedLanguage || "").toLowerCase();
+    return languageText.includes("arabic") || languageText === "ar";
+}
+
+function countArabicChars(input) {
+    return (String(input || "").match(/[\u0600-\u06FF]/g) || []).length;
+}
+
+function recoverArabicMojibake(input) {
+    const src = String(input || "");
+    if (!src) return src;
+    if (countArabicChars(src) >= 2) return src;
+    if (!/[þØÙÃÂ]/.test(src)) return src;
+
+    const candidates = [
+        Buffer.from(src, "latin1").toString("utf8"),
+        Buffer.from(src, "latin1").toString("utf16le"),
     ];
 
-    const source = [...headerLines, ...(String(feedback || "No feedback provided.").split(/\r?\n/))].join("\n");
-    const maxCharsPerLine = 90;
-    const rawLines = source.split(/\r?\n/);
-    const lines = [];
+    let best = src;
+    let bestScore = countArabicChars(src);
 
-    rawLines.forEach((line) => {
-        if (!line) {
-            lines.push("");
-            return;
-        }
-        let start = 0;
-        while (start < line.length) {
-            lines.push(line.slice(start, start + maxCharsPerLine));
-            start += maxCharsPerLine;
+    candidates.forEach((candidate) => {
+        const score = countArabicChars(candidate);
+        if (score > bestScore) {
+            best = candidate;
+            bestScore = score;
         }
     });
 
-    const escaped = lines
-        .map((line) => line.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"))
-        .map((line, idx) => {
-            if (idx === 0) return `(${line}) Tj`;
-            return `0 -14 Td (${line}) Tj`;
-        })
-        .join("\n");
+    return bestScore >= 2 ? best : src;
+}
 
-    const stream = `BT
-/F1 10 Tf
-50 790 Td
-${escaped}
-ET`;
+function normalizeResultTextFields(result) {
+    if (!result || typeof result !== "object") return result;
 
-    const streamBytes = Buffer.from(stream, "latin1");
-    const header = "%PDF-1.4\n";
-    const obj1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-    const obj2 = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-    const obj3 = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
-    const obj4 = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
-    const obj5Start = `5 0 obj\n<< /Length ${streamBytes.length} >>\nstream\n`;
-    const obj5End = "\nendstream\nendobj\n";
-
-    const parts = [header, obj1, obj2, obj3, obj4, obj5Start];
-    let offset = 0;
-    const offsets = [0];
-
-    function addOffset(part) {
-        offset += Buffer.byteLength(part, "latin1");
+    if (Array.isArray(result.questions)) {
+        result.questions = result.questions.map((q) => ({
+            ...q,
+            reasonForDeduction: recoverArabicMojibake(q?.reasonForDeduction),
+        }));
     }
 
-    addOffset(header);
-    offsets.push(offset);
-    addOffset(obj1);
-    offsets.push(offset);
-    addOffset(obj2);
-    offsets.push(offset);
-    addOffset(obj3);
-    offsets.push(offset);
-    addOffset(obj4);
-    offsets.push(offset);
-    addOffset(obj5Start);
-    offset += streamBytes.length;
-    addOffset(obj5End);
+    result.overallSummary = recoverArabicMojibake(result.overallSummary);
 
-    const xrefStart = offset;
-    const xref = [
-        "xref\n0 6\n",
-        "0000000000 65535 f \n",
-        `${String(offsets[1]).padStart(10, "0")} 00000 n \n`,
-        `${String(offsets[2]).padStart(10, "0")} 00000 n \n`,
-        `${String(offsets[3]).padStart(10, "0")} 00000 n \n`,
-        `${String(offsets[4]).padStart(10, "0")} 00000 n \n`,
-        `${String(offsets[5]).padStart(10, "0")} 00000 n \n`,
-        "trailer\n<< /Size 6 /Root 1 0 R >>\n",
-        `startxref\n${xrefStart}\n%%EOF`,
-    ].join("");
+    if (Array.isArray(result.majorMistakes)) {
+        result.majorMistakes = result.majorMistakes.map((m) => recoverArabicMojibake(m));
+    }
 
-    return Buffer.concat([
-        Buffer.from(header, "latin1"),
-        Buffer.from(obj1, "latin1"),
-        Buffer.from(obj2, "latin1"),
-        Buffer.from(obj3, "latin1"),
-        Buffer.from(obj4, "latin1"),
-        Buffer.from(obj5Start, "latin1"),
-        streamBytes,
-        Buffer.from(obj5End, "latin1"),
-        Buffer.from(xref, "latin1"),
-    ]);
+    if (Array.isArray(result.improvementAdvice)) {
+        result.improvementAdvice = result.improvementAdvice.map((a) => recoverArabicMojibake(a));
+    }
+
+    return result;
+}
+
+function buildDetailedFeedbackText(result, isArabic) {
+    let feedbackText = isArabic ?
+        "تفصيل الدرجات:\n\n" :
+        "Question Breakdown:\n\n";
+
+    if (result.questions && result.questions.length > 0) {
+        result.questions.forEach((q) => {
+            const full = Number(q.studentMarks) === Number(q.maxMarks);
+            const partial = Number(q.studentMarks) > 0 && Number(q.studentMarks) < Number(q.maxMarks);
+            const status = full ?
+                (isArabic ? "ممتاز" : "Excellent") :
+                partial ?
+                (isArabic ? "جيد مع نقص" : "Good but incomplete") :
+                (isArabic ? "يحتاج تحسين" : "Needs improvement");
+
+            feedbackText += `${q.questionNumber} - ${status}\n`;
+            feedbackText += isArabic ?
+                `الدرجة الكلية: ${q.maxMarks}\n` :
+                `Max Marks: ${q.maxMarks}\n`;
+            feedbackText += isArabic ?
+                `درجتك: ${q.studentMarks}\n` :
+                `Your Marks: ${q.studentMarks}\n`;
+            feedbackText += isArabic ?
+                `الدرجات المفقودة: ${q.marksLost}\n` :
+                `Marks Lost: ${q.marksLost}\n`;
+            feedbackText += isArabic ?
+                `سبب الخصم: ${q.reasonForDeduction || "لا يوجد سبب واضح."}\n\n` :
+                `Reason: ${q.reasonForDeduction || "No clear reason provided."}\n\n`;
+        });
+    } else {
+        feedbackText += isArabic ?
+            "لا يوجد تفصيل للأسئلة.\n\n" :
+            "No question-level details were provided.\n\n";
+    }
+
+    feedbackText += isArabic ?
+        "التقييم العام:\n" + (result.overallSummary || "لا يوجد ملخص متاح.") + "\n\n" :
+        "Overall Summary:\n" + (result.overallSummary || "No summary provided.") + "\n\n";
+
+    feedbackText += isArabic ? "أهم الأخطاء:\n" : "Major Mistakes:\n";
+    if (result.majorMistakes && result.majorMistakes.length > 0) {
+        result.majorMistakes.forEach((m, idx) => {
+            feedbackText += `${idx + 1}. ${m}\n`;
+        });
+    } else {
+        feedbackText += isArabic ? "1. لا توجد أخطاء كبيرة ظاهرة.\n" : "1. No major mistakes listed.\n";
+    }
+
+    feedbackText += isArabic ? "\nكيفية التحسين:\n" : "\nHow To Improve:\n";
+    if (result.improvementAdvice && result.improvementAdvice.length > 0) {
+        result.improvementAdvice.forEach((i, idx) => {
+            feedbackText += `${idx + 1}. ${i}\n`;
+        });
+    } else {
+        feedbackText += isArabic ? "1. راجع الحل خطوة بخطوة.\n" : "1. Review each solution step-by-step.\n";
+    }
+
+    return feedbackText.trim();
 }
 
 exports.submitAssignment = async(req, res) => {
@@ -295,6 +298,9 @@ exports.submitAssignment = async(req, res) => {
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
+        }
+        if (!req.file.buffer) {
+            return res.status(400).json({ message: "Invalid PDF upload" });
         }
 
         if (!req.file.buffer) {
@@ -347,6 +353,7 @@ exports.submitAssignment = async(req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
+            const isArabic = await detectPdfLanguage(studentPdf);
             const uploadedSubmission = await uploadPdfBuffer(
                 req.file.buffer,
                 "sa7a7ly/submissions"
@@ -356,7 +363,9 @@ exports.submitAssignment = async(req, res) => {
                 studentId,
                 pdfPath: uploadedSubmission.secure_url,
                 grade: assignment.totalPoints,
-                feedback: "Identical to model answer. Full marks awarded.",
+                feedback: isArabic ?
+                    "الإجابة مطابقة لنموذج الحل. تم منح الدرجة كاملة." :
+                    "Identical to model answer. Full marks awarded.",
                 submittedBy: studentId,
                 submittedByRole: "STUDENT",
                 gradedAt: new Date(),
@@ -375,8 +384,13 @@ exports.submitAssignment = async(req, res) => {
             });
         }
 
+
         const prompt = `
 You are a strict university professor.
+
+First, detect the primary language of the assignment (Arabic or English).
+If the assignment content is mostly Arabic, ALL feedback must be written in Arabic.
+If the assignment content is mostly English, ALL feedback must be written in English.
 
 Compare the STUDENT PDF and MODEL ANSWER PDF.
 
@@ -389,15 +403,10 @@ Grade EACH question separately.
 Deduct marks for:
 
 Missing important steps
-
 Missing key formulas
-
 Missing core explanations
-
 Logical mistakes
-
 Weak justification
-
 Incomplete answers
 
 Minor wording differences or small presentation issues should NOT automatically lose marks if the meaning is clear.
@@ -405,30 +414,42 @@ Minor wording differences or small presentation issues should NOT automatically 
 If a required concept or step is completely absent, it is WRONG.
 
 Do NOT assume intention.
-
 Do NOT mix questions.
 
 Be strict, but allow partial credit for partially correct reasoning.
 
 Use one fixed standard for all students in this assignment.
-
 Do not change strictness between submissions.
-
 Do not change question max marks between students.
+
+FEEDBACK STYLE RULES:
+
+Use simple, student-friendly language.
+Avoid jargon and long sentences.
+
+For each question "reasonForDeduction", include:
+1) what was done correctly (if any),
+2) what is missing/wrong,
+3) one concrete next step.
+
+Keep each reason concise but specific (about 1-3 short sentences).
+
+Make "overallSummary" 3-5 short, clear sentences.
+
+Return at least 3 items in "majorMistakes" and at least 3 items in "improvementAdvice"
+when enough evidence exists in the submission.
 
 DOUBLE CHECK BEFORE RETURNING:
 
 Sum of studentMarks must equal totalGrade.
-
 studentMarks <= maxMarks.
-
 marksLost = maxMarks - studentMarks.
-
 No invented mistakes.
 
 Return ONLY valid JSON:
 
 {
+"detectedLanguage": "arabic or english",
 "totalGrade": number,
 "questions": [
 {
@@ -436,12 +457,12 @@ Return ONLY valid JSON:
 "maxMarks": number,
 "studentMarks": number,
 "marksLost": number,
-"reasonForDeduction": "Clear explanation"
+"reasonForDeduction": "Clear explanation written in same detected language"
 }
 ],
-"overallSummary": "2-3 sentence strict evaluation",
-"majorMistakes": ["mistake 1"],
-"improvementAdvice": ["improvement 1"]
+"overallSummary": "2-3 sentence strict evaluation in same detected language",
+"majorMistakes": ["mistake 1 in same detected language"],
+"improvementAdvice": ["improvement 1 in same detected language"]
 }
 
 Total maximum marks = ${assignment.totalPoints}
@@ -449,6 +470,7 @@ Total maximum marks = ${assignment.totalPoints}
 DO NOT return markdown.
 ONLY return pure JSON.
 `;
+
 
         const payload = buildDeterministicPayload([
             { text: prompt },
@@ -480,6 +502,9 @@ ONLY return pure JSON.
         } catch (err) {
             throw new Error("AI returned invalid JSON");
         }
+        normalizeResultTextFields(result);
+        const isArabic = isArabicResult(result);
+
 
         // 🧠 Backend Safety Check
         let calculatedTotal = 0;
@@ -503,37 +528,7 @@ ONLY return pure JSON.
             result.totalGrade = assignment.totalPoints;
         }
 
-        // 📝 Build feedback
-        let feedbackText = "Question Breakdown:\n\n";
-
-        if (result.questions && result.questions.length > 0) {
-            result.questions.forEach((q) => {
-                feedbackText += `${q.questionNumber}\n`;
-                feedbackText += `Max Marks: ${q.maxMarks}\n`;
-                feedbackText += `Your Marks: ${q.studentMarks}\n`;
-                feedbackText += `Marks Lost: ${q.marksLost}\n`;
-                feedbackText += `Reason: ${q.reasonForDeduction}\n\n`;
-            });
-        }
-
-        feedbackText += "Overall Summary:\n" + result.overallSummary + "\n\n";
-
-        if (result.majorMistakes && result.majorMistakes.length > 0) {
-            feedbackText += "Major Mistakes:\n";
-            result.majorMistakes.forEach((m) => {
-                feedbackText += "- " + m + "\n";
-            });
-        }
-
-        if (
-            result.improvementAdvice &&
-            result.improvementAdvice.length > 0
-        ) {
-            feedbackText += "\nHow To Improve:\n";
-            result.improvementAdvice.forEach((i) => {
-                feedbackText += "- " + i + "\n";
-            });
-        }
+        const feedbackText = buildDetailedFeedbackText(result, isArabic);
 
         const uploadedSubmission = await uploadPdfBuffer(
             req.file.buffer,
@@ -580,17 +575,13 @@ ONLY return pure JSON.
 };
 
 // Submit on behalf (teacher/assistant)
-exports.submitAssignmentOnBehalf = async (req, res) => {
+exports.submitAssignmentOnBehalf = async(req, res) => {
     try {
-        const { assignmentId, studentId, studentName, submittedBy, studentWhatsapp } = req.body;
+        const { assignmentId, studentId, studentName, submittedBy } = req.body;
         const normalizedStudentName = (studentName || "").trim();
-        const normalizedStudentWhatsapp = (studentWhatsapp || "").trim();
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
-        }
-        if (!req.file.buffer) {
-            return res.status(400).json({ message: "Invalid PDF upload" });
         }
         if (!assignmentId || !submittedBy || (!studentId && !normalizedStudentName)) {
             return res.status(400).json({
@@ -625,40 +616,13 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
         }
 
-        let matchedStudent = null;
-        let resolvedStudentId = studentId || null;
-        if (resolvedStudentId && !classroom.studentIds.some((id) => id.toString() === resolvedStudentId.toString())) {
-            return res.status(400).json({ message: "Student does not belong to this classroom" });
-        }
+        const existingSubmission = studentId ?
+            await Submission.findOne({ assignmentId, studentId }).sort({ submittedAt: -1 }) :
+            null;
 
-        if (!resolvedStudentId && normalizedStudentName) {
-            const students = await User.find({
-                _id: { $in: classroom.studentIds },
-                role: "STUDENT",
-            }).select("_id name whatsappNumber");
-            const normalizedSearch = normalizedStudentName.toLowerCase();
-            matchedStudent = students.find(
-                (s) => (s.name || "").trim().toLowerCase() === normalizedSearch
-            ) || null;
-            if (matchedStudent) {
-                resolvedStudentId = matchedStudent._id;
-            }
-        }
-
-        const targetStudent = resolvedStudentId
-            ? await User.findOne({ _id: resolvedStudentId, role: "STUDENT" }).select("name whatsappNumber")
-            : matchedStudent;
-
-        const effectiveStudentName = normalizedStudentName || targetStudent?.name || "";
-        const effectiveWhatsapp = normalizedStudentWhatsapp || targetStudent?.whatsappNumber || "";
-
-        const existingSubmission = resolvedStudentId
-            ? await Submission.findOne({ assignmentId, studentId: resolvedStudentId }).sort({ submittedAt: -1 })
-            : null;
-
-        const latestRequest = resolvedStudentId
-            ? await ResubmissionRequest.findOne({ assignmentId, studentId: resolvedStudentId }).sort({ createdAt: -1 })
-            : null;
+        const latestRequest = studentId ?
+            await ResubmissionRequest.findOne({ assignmentId, studentId }).sort({ createdAt: -1 }) :
+            null;
 
         if (
             existingSubmission &&
@@ -686,30 +650,22 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
+            const isArabic = await detectPdfLanguage(studentPdf);
             const uploadedSubmission = await uploadPdfBuffer(
                 req.file.buffer,
                 "sa7a7ly/submissions"
             );
-            const identicalFeedback = "Identical to model answer. Full marks awarded.";
             const submission = await Submission.create({
                 assignmentId,
-                studentId: resolvedStudentId || null,
-                studentName: effectiveStudentName,
+                studentId: studentId || null,
+                studentName: normalizedStudentName,
                 pdfPath: uploadedSubmission.secure_url,
                 grade: assignment.totalPoints,
-                feedback: identicalFeedback,
+                feedback: isArabic ?
+                    "الإجابة مطابقة لنموذج الحل. تم منح الدرجة كاملة." : "Identical to model answer. Full marks awarded.",
                 submittedBy: staff._id,
                 submittedByRole: staff.role,
                 gradedAt: new Date(),
-            });
-
-            const whatsapp = await sendWhatsappGradeNotification({
-                to: effectiveWhatsapp,
-                studentName: effectiveStudentName,
-                assignmentTitle: assignment.title,
-                grade: assignment.totalPoints,
-                totalPoints: assignment.totalPoints,
-                feedback: submission.feedback,
             });
 
             if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
@@ -720,7 +676,6 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
 
             return res.status(201).json({
                 submission,
-                whatsapp,
                 alreadySubmitted: false,
                 resubmissionRequest: latestRequest || null,
             });
@@ -728,6 +683,10 @@ exports.submitAssignmentOnBehalf = async (req, res) => {
 
         const prompt = `
 You are a strict university professor.
+
+First, detect the primary language of the assignment (Arabic or English).
+If the assignment content is mostly Arabic, ALL feedback must be written in Arabic.
+If the assignment content is mostly English, ALL feedback must be written in English.
 
 Compare the STUDENT PDF and MODEL ANSWER PDF.
 
@@ -767,6 +726,23 @@ Do not change strictness between submissions.
 
 Do not change question max marks between students.
 
+FEEDBACK STYLE RULES:
+
+Use simple, student-friendly language.
+Avoid jargon and long sentences.
+
+For each question "reasonForDeduction", include:
+1) what was done correctly (if any),
+2) what is missing/wrong,
+3) one concrete next step.
+
+Keep each reason concise but specific (about 1-3 short sentences).
+
+Make "overallSummary" 3-5 short, clear sentences.
+
+Return at least 3 items in "majorMistakes" and at least 3 items in "improvementAdvice"
+when enough evidence exists in the submission.
+
 DOUBLE CHECK BEFORE RETURNING:
 
 Sum of studentMarks must equal totalGrade.
@@ -780,6 +756,7 @@ No invented mistakes.
 Return ONLY valid JSON:
 
 {
+"detectedLanguage": "arabic or english",
 "totalGrade": number,
 "questions": [
 {
@@ -787,12 +764,12 @@ Return ONLY valid JSON:
 "maxMarks": number,
 "studentMarks": number,
 "marksLost": number,
-"reasonForDeduction": "Clear explanation"
+"reasonForDeduction": "Clear explanation written in same detected language"
 }
 ],
-"overallSummary": "2-3 sentence strict evaluation",
-"majorMistakes": ["mistake 1"],
-"improvementAdvice": ["improvement 1"]
+"overallSummary": "2-3 sentence strict evaluation in same detected language",
+"majorMistakes": ["mistake 1 in same detected language"],
+"improvementAdvice": ["improvement 1 in same detected language"]
 }
 
 Total maximum marks = ${assignment.totalPoints}
@@ -826,6 +803,8 @@ ONLY return pure JSON.
         } catch (err) {
             throw new Error("AI returned invalid JSON");
         }
+        normalizeResultTextFields(result);
+        const isArabic = isArabicResult(result);
 
         let calculatedTotal = 0;
         if (result.questions && result.questions.length > 0) {
@@ -846,32 +825,7 @@ ONLY return pure JSON.
             result.totalGrade = assignment.totalPoints;
         }
 
-        let feedbackText = "Question Breakdown:\n\n";
-        if (result.questions && result.questions.length > 0) {
-            result.questions.forEach((q) => {
-                feedbackText += `${q.questionNumber}\n`;
-                feedbackText += `Max Marks: ${q.maxMarks}\n`;
-                feedbackText += `Your Marks: ${q.studentMarks}\n`;
-                feedbackText += `Marks Lost: ${q.marksLost}\n`;
-                feedbackText += `Reason: ${q.reasonForDeduction}\n\n`;
-            });
-        }
-
-        feedbackText += "Overall Summary:\n" + result.overallSummary + "\n\n";
-
-        if (result.majorMistakes && result.majorMistakes.length > 0) {
-            feedbackText += "Major Mistakes:\n";
-            result.majorMistakes.forEach((m) => {
-                feedbackText += "- " + m + "\n";
-            });
-        }
-
-        if (result.improvementAdvice && result.improvementAdvice.length > 0) {
-            feedbackText += "\nHow To Improve:\n";
-            result.improvementAdvice.forEach((i) => {
-                feedbackText += "- " + i + "\n";
-            });
-        }
+        const feedbackText = buildDetailedFeedbackText(result, isArabic);
 
         const uploadedSubmission = await uploadPdfBuffer(
             req.file.buffer,
@@ -879,23 +833,14 @@ ONLY return pure JSON.
         );
         const submission = await Submission.create({
             assignmentId,
-            studentId: resolvedStudentId || null,
-            studentName: effectiveStudentName,
+            studentId: studentId || null,
+            studentName: normalizedStudentName,
             pdfPath: uploadedSubmission.secure_url,
             grade: result.totalGrade,
-            feedback: feedbackText.trim(),
+            feedback: feedbackText,
             submittedBy: staff._id,
             submittedByRole: staff.role,
             gradedAt: new Date(),
-        });
-
-        const whatsapp = await sendWhatsappGradeNotification({
-            to: effectiveWhatsapp,
-            studentName: effectiveStudentName,
-            assignmentTitle: assignment.title,
-            grade: result.totalGrade,
-            totalPoints: assignment.totalPoints,
-            feedback: feedbackText.trim(),
         });
 
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
@@ -906,7 +851,6 @@ ONLY return pure JSON.
 
         res.status(201).json({
             submission,
-            whatsapp,
             alreadySubmitted: false,
             resubmissionRequest: latestRequest || null,
         });
@@ -960,7 +904,7 @@ exports.getSubmission = async(req, res) => {
 };
 
 // GET latest submission for a student + assignment
-exports.getStudentSubmission = async (req, res) => {
+exports.getStudentSubmission = async(req, res) => {
     try {
         const { assignmentId } = req.query;
         const studentId = req.user?.userId;
