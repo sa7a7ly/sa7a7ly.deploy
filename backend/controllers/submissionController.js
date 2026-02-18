@@ -396,6 +396,12 @@ Compare the STUDENT PDF and MODEL ANSWER PDF.
 
 GRADING RULES:
 
+If the MODEL ANSWER includes a mark scheme, rubric, or explicit marking criteria:
+- Follow it strictly as the highest priority.
+- Do not use a different grading style.
+- Do not change weights, criteria, or distribution defined by that mark scheme.
+- If two interpretations are possible, choose the one most consistent with the given mark scheme.
+
 Extract all questions from MODEL ANSWER.
 
 Grade EACH question separately.
@@ -440,6 +446,11 @@ Return at least 3 items in "majorMistakes" and at least 3 items in "improvementA
 when enough evidence exists in the submission.
 
 DOUBLE CHECK BEFORE RETURNING:
+
+Perform at least 3 verification passes before final output:
+Pass 1: Grade each question using the mark scheme/rubric.
+Pass 2: Re-check every deduction against evidence from student answer and mark scheme.
+Pass 3: Recalculate totals and JSON consistency checks.
 
 Sum of studentMarks must equal totalGrade.
 studentMarks <= maxMarks.
@@ -692,6 +703,12 @@ Compare the STUDENT PDF and MODEL ANSWER PDF.
 
 GRADING RULES:
 
+If the MODEL ANSWER includes a mark scheme, rubric, or explicit marking criteria:
+- Follow it strictly as the highest priority.
+- Do not use a different grading style.
+- Do not change weights, criteria, or distribution defined by that mark scheme.
+- If two interpretations are possible, choose the one most consistent with the given mark scheme.
+
 Extract all questions from MODEL ANSWER.
 
 Grade EACH question separately.
@@ -744,6 +761,11 @@ Return at least 3 items in "majorMistakes" and at least 3 items in "improvementA
 when enough evidence exists in the submission.
 
 DOUBLE CHECK BEFORE RETURNING:
+
+Perform at least 3 verification passes before final output:
+Pass 1: Grade each question using the mark scheme/rubric.
+Pass 2: Re-check every deduction against evidence from student answer and mark scheme.
+Pass 3: Recalculate totals and JSON consistency checks.
 
 Sum of studentMarks must equal totalGrade.
 

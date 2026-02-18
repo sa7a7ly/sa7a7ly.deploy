@@ -38,6 +38,9 @@ const recoverArabicMojibake = (value) => {
       candidates.push(new TextDecoder('utf-16le').decode(swapped));
     }
   } catch (_) {}
+  try {
+    candidates.push(decodeURIComponent(escape(text)));
+  } catch (_) {}
 
   let best = text;
   let bestScore = countArabicChars(text);
@@ -49,6 +52,36 @@ const recoverArabicMojibake = (value) => {
     }
   });
   return best;
+};
+
+const wrapTextWithCanvas = (text, maxWidthPx, fontPx = 30) => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${fontPx}px Arial`;
+
+  const lines = [];
+  String(text || '')
+    .split(/\r?\n/)
+    .forEach((rawLine) => {
+      const words = rawLine.split(/\s+/).filter(Boolean);
+      if (!words.length) {
+        lines.push('');
+        return;
+      }
+      let current = '';
+      words.forEach((word) => {
+        const test = current ? `${current} ${word}` : word;
+        if (ctx.measureText(test).width <= maxWidthPx) {
+          current = test;
+        } else {
+          if (current) lines.push(current);
+          current = word;
+        }
+      });
+      if (current) lines.push(current);
+    });
+
+  return lines;
 };
 
 
@@ -436,6 +469,7 @@ const SubmitAssignmentPage = () => {
       return;
     }
     const feedbackText = recoverArabicMojibake(result.feedback || '');
+    const hasArabicFeedback = /[\u0600-\u06FF]/.test(feedbackText);
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -500,28 +534,90 @@ const SubmitAssignmentPage = () => {
     y += 8;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
-    const feedbackLines = doc.splitTextToSize(
-      feedbackText || 'No feedback provided.',
-      pageWidth - margin * 2 - 8
-    );
-    feedbackLines.forEach((line) => {
-      if (y > pageHeight - margin - 6) {
-        doc.addPage();
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(
-          margin,
-          margin,
-          pageWidth - margin * 2,
-          pageHeight - margin * 2,
-          3,
-          3,
-          'S'
+    if (!hasArabicFeedback) {
+      const feedbackLines = doc.splitTextToSize(
+        feedbackText || 'No feedback provided.',
+        pageWidth - margin * 2 - 8
+      );
+      feedbackLines.forEach((line) => {
+        if (y > pageHeight - margin - 6) {
+          doc.addPage();
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(
+            margin,
+            margin,
+            pageWidth - margin * 2,
+            pageHeight - margin * 2,
+            3,
+            3,
+            'S'
+          );
+          y = margin + 8;
+        }
+        doc.text(line, margin + 4, y);
+        y += 6;
+      });
+    } else {
+      const contentWidthMm = pageWidth - margin * 2 - 8;
+      const lineHeightMm = 6;
+      const lineHeightPx = 34;
+      const canvasWidthPx = 1600;
+      const maxTextWidthPx = canvasWidthPx - 40;
+      const wrappedLines = wrapTextWithCanvas(
+        feedbackText || 'لا توجد ملاحظات.',
+        maxTextWidthPx,
+        30
+      );
+      let lineIndex = 0;
+
+      while (lineIndex < wrappedLines.length) {
+        const availableHeightMm = pageHeight - margin - y;
+        const linesPerPage = Math.max(
+          1,
+          Math.floor(availableHeightMm / lineHeightMm)
         );
-        y = margin + 8;
+        const pageLines = wrappedLines.slice(lineIndex, lineIndex + linesPerPage);
+        lineIndex += pageLines.length;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasWidthPx;
+        canvas.height = Math.max(120, pageLines.length * lineHeightPx + 20);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.direction = 'rtl';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.font = '30px Arial';
+        ctx.fillStyle = '#111827';
+
+        let py = 10;
+        pageLines.forEach((line) => {
+          ctx.fillText(line, canvas.width - 20, py);
+          py += lineHeightPx;
+        });
+
+        const img = canvas.toDataURL('image/png');
+        const imgHeightMm = pageLines.length * lineHeightMm;
+        doc.addImage(img, 'PNG', margin + 4, y, contentWidthMm, imgHeightMm);
+        y += imgHeightMm;
+
+        if (lineIndex < wrappedLines.length) {
+          doc.addPage();
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(
+            margin,
+            margin,
+            pageWidth - margin * 2,
+            pageHeight - margin * 2,
+            3,
+            3,
+            'S'
+          );
+          y = margin + 8;
+        }
       }
-      doc.text(line, margin + 4, y);
-      y += 6;
-    });
+    }
 
     const safeTitle = (assignment?.title || 'assignment')
       .toLowerCase()
