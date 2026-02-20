@@ -200,29 +200,117 @@ const GradeOnBehalfPage = () => {
     y += 8;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
+    const feedbackText = String(feedback || '');
+    const hasArabicFeedback = /[\u0600-\u06FF]/.test(feedbackText);
 
-    const feedbackLines = doc.splitTextToSize(
-      feedback || 'No feedback provided.',
-      pageWidth - margin * 2 - 8
-    );
-    feedbackLines.forEach((line) => {
-      if (y > pageHeight - margin - 6) {
-        doc.addPage();
-        doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(
-          margin,
-          margin,
-          pageWidth - margin * 2,
-          pageHeight - margin * 2,
-          3,
-          3,
-          'S'
-        );
-        y = margin + 8;
+    if (!hasArabicFeedback) {
+      const feedbackLines = doc.splitTextToSize(
+        feedbackText || 'No feedback provided.',
+        pageWidth - margin * 2 - 8
+      );
+      feedbackLines.forEach((line) => {
+        if (y > pageHeight - margin - 6) {
+          doc.addPage();
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(
+            margin,
+            margin,
+            pageWidth - margin * 2,
+            pageHeight - margin * 2,
+            3,
+            3,
+            'S'
+          );
+          y = margin + 8;
+        }
+        doc.text(line, margin + 4, y);
+        y += 6;
+      });
+    } else {
+      const contentWidthMm = pageWidth - margin * 2 - 8;
+      const lineHeightPx = 46;
+      const canvasWidthPx = 1600;
+      const maxTextWidthPx = canvasWidthPx - 40;
+      const arabicFontFamily = "'Noto Naskh Arabic','Amiri','Tahoma','Arial',sans-serif";
+      const estimatedLineHeightMm = (lineHeightPx * contentWidthMm) / canvasWidthPx;
+      const wrapTextWithCanvas = (text) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.font = `34px ${arabicFontFamily}`;
+
+        const lines = [];
+        String(text || '')
+          .split(/\r?\n/)
+          .forEach((rawLine) => {
+            const words = rawLine.split(/\s+/).filter(Boolean);
+            if (!words.length) {
+              lines.push('');
+              return;
+            }
+            let current = '';
+            words.forEach((word) => {
+              const test = current ? `${current} ${word}` : word;
+              if (ctx.measureText(test).width <= maxTextWidthPx) {
+                current = test;
+              } else {
+                if (current) lines.push(current);
+                current = word;
+              }
+            });
+            if (current) lines.push(current);
+          });
+
+        return lines;
+      };
+
+      const wrappedLines = wrapTextWithCanvas(feedbackText || 'لا توجد ملاحظات.');
+      let lineIndex = 0;
+
+      while (lineIndex < wrappedLines.length) {
+        const availableHeightMm = pageHeight - margin - y;
+        const linesPerPage = Math.max(1, Math.floor(availableHeightMm / estimatedLineHeightMm));
+        const pageLines = wrappedLines.slice(lineIndex, lineIndex + linesPerPage);
+        lineIndex += pageLines.length;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasWidthPx;
+        canvas.height = Math.max(120, pageLines.length * lineHeightPx + 20);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.direction = 'rtl';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.font = `34px ${arabicFontFamily}`;
+        ctx.fillStyle = '#111827';
+
+        let py = 10;
+        pageLines.forEach((line) => {
+          ctx.fillText(line, canvas.width - 20, py);
+          py += lineHeightPx;
+        });
+
+        const img = canvas.toDataURL('image/png');
+        const imgHeightMm = (canvas.height * contentWidthMm) / canvas.width;
+        doc.addImage(img, 'PNG', margin + 4, y, contentWidthMm, imgHeightMm);
+        y += imgHeightMm;
+
+        if (lineIndex < wrappedLines.length) {
+          doc.addPage();
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(
+            margin,
+            margin,
+            pageWidth - margin * 2,
+            pageHeight - margin * 2,
+            3,
+            3,
+            'S'
+          );
+          y = margin + 8;
+        }
       }
-      doc.text(line, margin + 4, y);
-      y += 6;
-    });
+    }
 
     return doc;
   };

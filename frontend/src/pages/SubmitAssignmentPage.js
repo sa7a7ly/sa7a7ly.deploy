@@ -54,10 +54,15 @@ const recoverArabicMojibake = (value) => {
   return best;
 };
 
-const wrapTextWithCanvas = (text, maxWidthPx, fontPx = 30) => {
+const wrapTextWithCanvas = (
+  text,
+  maxWidthPx,
+  fontPx = 30,
+  fontFamily = "Arial"
+) => {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  ctx.font = `${fontPx}px Arial`;
+  ctx.font = `${fontPx}px ${fontFamily}`;
 
   const lines = [];
   String(text || '')
@@ -559,14 +564,16 @@ const SubmitAssignmentPage = () => {
       });
     } else {
       const contentWidthMm = pageWidth - margin * 2 - 8;
-      const lineHeightMm = 6;
-      const lineHeightPx = 34;
+      const lineHeightPx = 46;
       const canvasWidthPx = 1600;
       const maxTextWidthPx = canvasWidthPx - 40;
+      const arabicFontFamily = "'Noto Naskh Arabic','Amiri','Tahoma','Arial',sans-serif";
+      const estimatedLineHeightMm = (lineHeightPx * contentWidthMm) / canvasWidthPx;
       const wrappedLines = wrapTextWithCanvas(
         feedbackText || 'لا توجد ملاحظات.',
         maxTextWidthPx,
-        30
+        34,
+        arabicFontFamily
       );
       let lineIndex = 0;
 
@@ -574,7 +581,7 @@ const SubmitAssignmentPage = () => {
         const availableHeightMm = pageHeight - margin - y;
         const linesPerPage = Math.max(
           1,
-          Math.floor(availableHeightMm / lineHeightMm)
+          Math.floor(availableHeightMm / estimatedLineHeightMm)
         );
         const pageLines = wrappedLines.slice(lineIndex, lineIndex + linesPerPage);
         lineIndex += pageLines.length;
@@ -588,7 +595,7 @@ const SubmitAssignmentPage = () => {
         ctx.direction = 'rtl';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
-        ctx.font = '30px Arial';
+        ctx.font = `34px ${arabicFontFamily}`;
         ctx.fillStyle = '#111827';
 
         let py = 10;
@@ -598,7 +605,7 @@ const SubmitAssignmentPage = () => {
         });
 
         const img = canvas.toDataURL('image/png');
-        const imgHeightMm = pageLines.length * lineHeightMm;
+        const imgHeightMm = (canvas.height * contentWidthMm) / canvas.width;
         doc.addImage(img, 'PNG', margin + 4, y, contentWidthMm, imgHeightMm);
         y += imgHeightMm;
 

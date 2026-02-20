@@ -139,154 +139,6 @@ async function getPdfBuffer(source, fallbackBuffer) {
     throw new Error("Unable to read PDF");
 }
 
-async function detectPdfLanguage(studentPdf) {
-    const prompt = `
-Detect the primary language of the STUDENT PDF.
-Return ONLY valid JSON:
-{
-"detectedLanguage": "arabic or english"
-}
-DO NOT return markdown.
-ONLY return pure JSON.
-`;
-
-    const payload = buildDeterministicPayload([
-        { text: prompt },
-        {
-            inlineData: {
-                mimeType: "application/pdf",
-                data: studentPdf.toString("base64"),
-            },
-        },
-    ]);
-
-    try {
-        const aiText = await callGemini(payload);
-        const cleaned = aiText.replace(/```json/gi, "").replace(/```/g, "").trim();
-        const result = JSON.parse(cleaned);
-        return String(result?.detectedLanguage || "").toLowerCase().includes("arabic");
-    } catch {
-        return false;
-    }
-}
-
-function isArabicResult(result) {
-    const languageText = String(result?.detectedLanguage || "").toLowerCase();
-    return languageText.includes("arabic") || languageText === "ar";
-}
-
-function countArabicChars(input) {
-    return (String(input || "").match(/[\u0600-\u06FF]/g) || []).length;
-}
-
-function recoverArabicMojibake(input) {
-    const src = String(input || "");
-    if (!src) return src;
-    if (countArabicChars(src) >= 2) return src;
-    if (!/[þØÙÃÂ]/.test(src)) return src;
-
-    const candidates = [
-        Buffer.from(src, "latin1").toString("utf8"),
-        Buffer.from(src, "latin1").toString("utf16le"),
-    ];
-
-    let best = src;
-    let bestScore = countArabicChars(src);
-
-    candidates.forEach((candidate) => {
-        const score = countArabicChars(candidate);
-        if (score > bestScore) {
-            best = candidate;
-            bestScore = score;
-        }
-    });
-
-    return bestScore >= 2 ? best : src;
-}
-
-function normalizeResultTextFields(result) {
-    if (!result || typeof result !== "object") return result;
-
-    if (Array.isArray(result.questions)) {
-        result.questions = result.questions.map((q) => ({
-            ...q,
-            reasonForDeduction: recoverArabicMojibake(q?.reasonForDeduction),
-        }));
-    }
-
-    result.overallSummary = recoverArabicMojibake(result.overallSummary);
-
-    if (Array.isArray(result.majorMistakes)) {
-        result.majorMistakes = result.majorMistakes.map((m) => recoverArabicMojibake(m));
-    }
-
-    if (Array.isArray(result.improvementAdvice)) {
-        result.improvementAdvice = result.improvementAdvice.map((a) => recoverArabicMojibake(a));
-    }
-
-    return result;
-}
-
-function buildDetailedFeedbackText(result, isArabic) {
-    let feedbackText = isArabic ?
-        "تفصيل الدرجات:\n\n" :
-        "Question Breakdown:\n\n";
-
-    if (result.questions && result.questions.length > 0) {
-        result.questions.forEach((q) => {
-            const full = Number(q.studentMarks) === Number(q.maxMarks);
-            const partial = Number(q.studentMarks) > 0 && Number(q.studentMarks) < Number(q.maxMarks);
-            const status = full ?
-                (isArabic ? "ممتاز" : "Excellent") :
-                partial ?
-                (isArabic ? "جيد مع نقص" : "Good but incomplete") :
-                (isArabic ? "يحتاج تحسين" : "Needs improvement");
-
-            feedbackText += `${q.questionNumber} - ${status}\n`;
-            feedbackText += isArabic ?
-                `الدرجة الكلية: ${q.maxMarks}\n` :
-                `Max Marks: ${q.maxMarks}\n`;
-            feedbackText += isArabic ?
-                `درجتك: ${q.studentMarks}\n` :
-                `Your Marks: ${q.studentMarks}\n`;
-            feedbackText += isArabic ?
-                `الدرجات المفقودة: ${q.marksLost}\n` :
-                `Marks Lost: ${q.marksLost}\n`;
-            feedbackText += isArabic ?
-                `سبب الخصم: ${q.reasonForDeduction || "لا يوجد سبب واضح."}\n\n` :
-                `Reason: ${q.reasonForDeduction || "No clear reason provided."}\n\n`;
-        });
-    } else {
-        feedbackText += isArabic ?
-            "لا يوجد تفصيل للأسئلة.\n\n" :
-            "No question-level details were provided.\n\n";
-    }
-
-    feedbackText += isArabic ?
-        "التقييم العام:\n" + (result.overallSummary || "لا يوجد ملخص متاح.") + "\n\n" :
-        "Overall Summary:\n" + (result.overallSummary || "No summary provided.") + "\n\n";
-
-    feedbackText += isArabic ? "أهم الأخطاء:\n" : "Major Mistakes:\n";
-    if (result.majorMistakes && result.majorMistakes.length > 0) {
-        result.majorMistakes.forEach((m, idx) => {
-            feedbackText += `${idx + 1}. ${m}\n`;
-        });
-    } else {
-        feedbackText += isArabic ? "1. لا توجد أخطاء كبيرة ظاهرة.\n" : "1. No major mistakes listed.\n";
-    }
-
-    feedbackText += isArabic ? "\nكيفية التحسين:\n" : "\nHow To Improve:\n";
-    if (result.improvementAdvice && result.improvementAdvice.length > 0) {
-        result.improvementAdvice.forEach((i, idx) => {
-            feedbackText += `${idx + 1}. ${i}\n`;
-        });
-    } else {
-        feedbackText += isArabic ? "1. راجع الحل خطوة بخطوة.\n" : "1. Review each solution step-by-step.\n";
-    }
-
-    return feedbackText.trim();
-}
-
 exports.submitAssignment = async(req, res) => {
     try {
         const { assignmentId } = req.body;
@@ -298,9 +150,6 @@ exports.submitAssignment = async(req, res) => {
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
-        }
-        if (!req.file.buffer) {
-            return res.status(400).json({ message: "Invalid PDF upload" });
         }
 
         if (!req.file.buffer) {
@@ -353,7 +202,6 @@ exports.submitAssignment = async(req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
-            const isArabic = await detectPdfLanguage(studentPdf);
             const uploadedSubmission = await uploadPdfBuffer(
                 req.file.buffer,
                 "sa7a7ly/submissions"
@@ -363,9 +211,7 @@ exports.submitAssignment = async(req, res) => {
                 studentId,
                 pdfPath: uploadedSubmission.secure_url,
                 grade: assignment.totalPoints,
-                feedback: isArabic ?
-                    "الإجابة مطابقة لنموذج الحل. تم منح الدرجة كاملة." :
-                    "Identical to model answer. Full marks awarded.",
+                feedback: "Identical to model answer. Full marks awarded.",
                 submittedBy: studentId,
                 submittedByRole: "STUDENT",
                 gradedAt: new Date(),
@@ -386,13 +232,36 @@ exports.submitAssignment = async(req, res) => {
 
 
         const prompt = `
-You are a strict university professor.
+You are a strict academic essay examiner.
 
 First, detect the primary language of the assignment (Arabic or English).
 If the assignment content is mostly Arabic, ALL feedback must be written in Arabic.
 If the assignment content is mostly English, ALL feedback must be written in English.
 
 Compare the STUDENT PDF and MODEL ANSWER PDF.
+
+TWO-PHASE EVALUATION (MANDATORY):
+
+Phase 1 – Spelling Audit:
+Scan the entire student essay word-by-word and extract ALL spelling mistakes.
+Store them internally as a list of (wrong_word → correct_word).
+
+Do NOT grade yet.
+Do NOT analyze content yet.
+
+Phase 2 – Full Evaluation:
+After completing Phase 1, perform the full evaluation strictly following the MODEL ANSWER grading rules.
+
+During feedback generation:
+- Output spelling mistakes FIRST.
+- Then output all remaining mistakes (grammar, style, content, logic).
+
+MODEL ANSWER FEEDBACK AUTHORITY:
+
+If the MODEL ANSWER contains ANY feedback instructions:
+- Treat them as HARD REQUIREMENTS.
+- Follow them EXACTLY.
+- They override ALL feedback rules in this prompt.
 
 GRADING RULES:
 
@@ -402,60 +271,67 @@ If the MODEL ANSWER includes a mark scheme, rubric, or explicit marking criteria
 - Do not change weights, criteria, or distribution defined by that mark scheme.
 - If two interpretations are possible, choose the one most consistent with the given mark scheme.
 
-Extract all questions from MODEL ANSWER.
+GENERAL EVALUATION RULES:
 
-Grade EACH question separately.
+The essay must be evaluated as a whole out of 20 marks:
+- 10 marks for CONTENT (clarity of ideas, relevance to topic, depth, organization, coherence).
+- 10 marks for LANGUAGE (grammar, spelling, style, punctuation, structure).
 
-Deduct marks for:
+FEEDBACK ENFORCEMENT (CRITICAL):
 
-Missing important steps
-Missing key formulas
-Missing core explanations
-Logical mistakes
-Weak justification
-Incomplete answers
+Only include parts where the student LOST marks.
+Completely omit fully correct parts.
 
-Minor wording differences or small presentation issues should NOT automatically lose marks if the meaning is clear.
+For EVERY incorrect part:
 
-If a required concept or step is completely absent, it is WRONG.
+You MUST perform a full audit.
 
-Do NOT assume intention.
-Do NOT mix questions.
+You MUST list ALL mistakes individually without exception.
 
-Be strict, but allow partial credit for partially correct reasoning.
+This includes:
+- Spelling mistakes (EVERY misspelled word must be shown and corrected FIRST)
+- Grammar mistakes
+- Stylistic issues
+- Punctuation errors
+- Content mistakes
+- Logical weaknesses
+- Missing ideas
+- Weak argumentation
 
-Use one fixed standard for all students in this assignment.
-Do not change strictness between submissions.
-Do not change question max marks between students.
+NO summarizing.
+NO grouping.
+NO sampling.
+EVERY mistake must appear separately.
 
-FEEDBACK STYLE RULES:
+For EACH mistake you MUST provide:
 
-Use simple, student-friendly language.
-Avoid jargon and long sentences.
+1) The exact wrong text from the student.
+2) Explanation of why it is incorrect.
+3) The correct rule or correct concept.
+4) The corrected version OR a strong correct example.
 
-For each question "reasonForDeduction", include:
-1) what was done correctly (if any),
-2) what is missing/wrong,
-3) one concrete next step.
+Professional academic tone is required.
+Do NOT shorten explanations.
+Completeness is more important than brevity.
+There is NO length limit.
 
-Keep each reason concise but specific (about 1-3 short sentences).
+MAJOR MISTAKES SECTION:
 
-Make "overallSummary" 3-5 short, clear sentences.
+Contains ONLY a high-level summary of recurring serious problems.
 
-Return at least 3 items in "majorMistakes" and at least 3 items in "improvementAdvice"
-when enough evidence exists in the submission.
+IMPROVEMENT ADVICE SECTION:
 
-DOUBLE CHECK BEFORE RETURNING:
+Provide concrete technical recommendations based directly on the student's detected weaknesses.
 
-Perform at least 3 verification passes before final output:
-Pass 1: Grade each question using the mark scheme/rubric.
-Pass 2: Re-check every deduction against evidence from student answer and mark scheme.
-Pass 3: Recalculate totals and JSON consistency checks.
+VERIFICATION BEFORE RETURNING:
 
-Sum of studentMarks must equal totalGrade.
-studentMarks <= maxMarks.
-marksLost = maxMarks - studentMarks.
-No invented mistakes.
+Pass 0: Ensure spelling audit completed.
+Pass 1: Scan essay line-by-line and extract ALL mistakes.
+Pass 2: Confirm EVERY mistake appears with correction.
+Pass 3: Ensure grading distribution matches 10 content + 10 language.
+Pass 4: Verify totalGrade equals sum of awarded marks.
+
+If ANY mistake is skipped, the response is INVALID.
 
 Return ONLY valid JSON:
 
@@ -464,19 +340,17 @@ Return ONLY valid JSON:
 "totalGrade": number,
 "questions": [
 {
-"questionNumber": "Q1",
-"maxMarks": number,
+"questionNumber": "Essay",
+"maxMarks": 20,
 "studentMarks": number,
 "marksLost": number,
-"reasonForDeduction": "Clear explanation written in same detected language"
+"reasonForDeduction": "FULL audit listing every mistake with correct concepts and corrected examples"
 }
 ],
-"overallSummary": "2-3 sentence strict evaluation in same detected language",
-"majorMistakes": ["mistake 1 in same detected language"],
-"improvementAdvice": ["improvement 1 in same detected language"]
+"overallSummary": "Strict professional evaluation",
+"majorMistakes": ["high-level summary only"],
+"improvementAdvice": ["concrete technical advice"]
 }
-
-Total maximum marks = ${assignment.totalPoints}
 
 DO NOT return markdown.
 ONLY return pure JSON.
@@ -513,8 +387,7 @@ ONLY return pure JSON.
         } catch (err) {
             throw new Error("AI returned invalid JSON");
         }
-        normalizeResultTextFields(result);
-        const isArabic = isArabicResult(result);
+        const isArabic = result.detectedLanguage === "arabic";
 
 
         // 🧠 Backend Safety Check
@@ -539,13 +412,57 @@ ONLY return pure JSON.
             result.totalGrade = assignment.totalPoints;
         }
 
-        const feedbackText = buildDetailedFeedbackText(result, isArabic);
+        let feedbackText = isArabic ?
+            "تفصيل الدرجات:\n\n" :
+            "Question Breakdown:\n\n";
+
+        if (result.questions && result.questions.length > 0) {
+            result.questions.forEach((q) => {
+                feedbackText += `${q.questionNumber}\n`;
+
+                feedbackText += isArabic ?
+                    `الدرجة الكلية: ${q.maxMarks}\n` :
+                    `Max Marks: ${q.maxMarks}\n`;
+
+                feedbackText += isArabic ?
+                    `درجتك: ${q.studentMarks}\n` :
+                    `Your Marks: ${q.studentMarks}\n`;
+
+                feedbackText += isArabic ?
+                    `الدرجات المفقودة: ${q.marksLost}\n` :
+                    `Marks Lost: ${q.marksLost}\n`;
+
+                feedbackText += isArabic ?
+                    `سبب الخصم: ${q.reasonForDeduction}\n\n` :
+                    `Reason: ${q.reasonForDeduction}\n\n`;
+            });
+        }
+
+        feedbackText += isArabic ?
+            "التقييم العام:\n" + result.overallSummary + "\n\n" :
+            "Overall Summary:\n" + result.overallSummary + "\n\n";
+
+        if (result.majorMistakes && result.majorMistakes.length > 0) {
+            feedbackText += isArabic ? "أهم الأخطاء:\n" : "Major Mistakes:\n";
+            result.majorMistakes.forEach((m) => {
+                feedbackText += "- " + m + "\n";
+            });
+        }
+
+        if (result.improvementAdvice && result.improvementAdvice.length > 0) {
+            feedbackText += isArabic ?
+                "\nكيفية التحسين:\n" :
+                "\nHow To Improve:\n";
+
+            result.improvementAdvice.forEach((i) => {
+                feedbackText += "- " + i + "\n";
+            });
+        }
 
         const uploadedSubmission = await uploadPdfBuffer(
             req.file.buffer,
             "sa7a7ly/submissions"
         );
-
         const submission = await Submission.create({
             assignmentId,
             studentId,
@@ -648,8 +565,8 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             });
         }
 
-        const studentPdf = req.file.buffer;
-        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
+        const studentPdf = fs.readFileSync(req.file.path);
+        const modelPdf = fs.readFileSync(assignment.modelAnswerPdfPath);
 
         const studentHash = crypto
             .createHash("sha256")
@@ -661,19 +578,13 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
-            const isArabic = await detectPdfLanguage(studentPdf);
-            const uploadedSubmission = await uploadPdfBuffer(
-                req.file.buffer,
-                "sa7a7ly/submissions"
-            );
             const submission = await Submission.create({
                 assignmentId,
                 studentId: studentId || null,
                 studentName: normalizedStudentName,
-                pdfPath: uploadedSubmission.secure_url,
+                pdfPath: req.file.path,
                 grade: assignment.totalPoints,
-                feedback: isArabic ?
-                    "الإجابة مطابقة لنموذج الحل. تم منح الدرجة كاملة." : "Identical to model answer. Full marks awarded.",
+                feedback: "Identical to model answer. Full marks awarded.",
                 submittedBy: staff._id,
                 submittedByRole: staff.role,
                 gradedAt: new Date(),
@@ -695,19 +606,9 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
         const prompt = `
 You are a strict university professor.
 
-First, detect the primary language of the assignment (Arabic or English).
-If the assignment content is mostly Arabic, ALL feedback must be written in Arabic.
-If the assignment content is mostly English, ALL feedback must be written in English.
-
 Compare the STUDENT PDF and MODEL ANSWER PDF.
 
 GRADING RULES:
-
-If the MODEL ANSWER includes a mark scheme, rubric, or explicit marking criteria:
-- Follow it strictly as the highest priority.
-- Do not use a different grading style.
-- Do not change weights, criteria, or distribution defined by that mark scheme.
-- If two interpretations are possible, choose the one most consistent with the given mark scheme.
 
 Extract all questions from MODEL ANSWER.
 
@@ -743,29 +644,7 @@ Do not change strictness between submissions.
 
 Do not change question max marks between students.
 
-FEEDBACK STYLE RULES:
-
-Use simple, student-friendly language.
-Avoid jargon and long sentences.
-
-For each question "reasonForDeduction", include:
-1) what was done correctly (if any),
-2) what is missing/wrong,
-3) one concrete next step.
-
-Keep each reason concise but specific (about 1-3 short sentences).
-
-Make "overallSummary" 3-5 short, clear sentences.
-
-Return at least 3 items in "majorMistakes" and at least 3 items in "improvementAdvice"
-when enough evidence exists in the submission.
-
 DOUBLE CHECK BEFORE RETURNING:
-
-Perform at least 3 verification passes before final output:
-Pass 1: Grade each question using the mark scheme/rubric.
-Pass 2: Re-check every deduction against evidence from student answer and mark scheme.
-Pass 3: Recalculate totals and JSON consistency checks.
 
 Sum of studentMarks must equal totalGrade.
 
@@ -778,7 +657,6 @@ No invented mistakes.
 Return ONLY valid JSON:
 
 {
-"detectedLanguage": "arabic or english",
 "totalGrade": number,
 "questions": [
 {
@@ -786,12 +664,12 @@ Return ONLY valid JSON:
 "maxMarks": number,
 "studentMarks": number,
 "marksLost": number,
-"reasonForDeduction": "Clear explanation written in same detected language"
+"reasonForDeduction": "Clear explanation"
 }
 ],
-"overallSummary": "2-3 sentence strict evaluation in same detected language",
-"majorMistakes": ["mistake 1 in same detected language"],
-"improvementAdvice": ["improvement 1 in same detected language"]
+"overallSummary": "2-3 sentence strict evaluation",
+"majorMistakes": ["mistake 1"],
+"improvementAdvice": ["improvement 1"]
 }
 
 Total maximum marks = ${assignment.totalPoints}
@@ -825,8 +703,6 @@ ONLY return pure JSON.
         } catch (err) {
             throw new Error("AI returned invalid JSON");
         }
-        normalizeResultTextFields(result);
-        const isArabic = isArabicResult(result);
 
         let calculatedTotal = 0;
         if (result.questions && result.questions.length > 0) {
@@ -847,19 +723,40 @@ ONLY return pure JSON.
             result.totalGrade = assignment.totalPoints;
         }
 
-        const feedbackText = buildDetailedFeedbackText(result, isArabic);
+        let feedbackText = "Question Breakdown:\n\n";
+        if (result.questions && result.questions.length > 0) {
+            result.questions.forEach((q) => {
+                feedbackText += `${q.questionNumber}\n`;
+                feedbackText += `Max Marks: ${q.maxMarks}\n`;
+                feedbackText += `Your Marks: ${q.studentMarks}\n`;
+                feedbackText += `Marks Lost: ${q.marksLost}\n`;
+                feedbackText += `Reason: ${q.reasonForDeduction}\n\n`;
+            });
+        }
 
-        const uploadedSubmission = await uploadPdfBuffer(
-            req.file.buffer,
-            "sa7a7ly/submissions"
-        );
+        feedbackText += "Overall Summary:\n" + result.overallSummary + "\n\n";
+
+        if (result.majorMistakes && result.majorMistakes.length > 0) {
+            feedbackText += "Major Mistakes:\n";
+            result.majorMistakes.forEach((m) => {
+                feedbackText += "- " + m + "\n";
+            });
+        }
+
+        if (result.improvementAdvice && result.improvementAdvice.length > 0) {
+            feedbackText += "\nHow To Improve:\n";
+            result.improvementAdvice.forEach((i) => {
+                feedbackText += "- " + i + "\n";
+            });
+        }
+
         const submission = await Submission.create({
             assignmentId,
             studentId: studentId || null,
             studentName: normalizedStudentName,
-            pdfPath: uploadedSubmission.secure_url,
+            pdfPath: req.file.path,
             grade: result.totalGrade,
-            feedback: feedbackText,
+            feedback: feedbackText.trim(),
             submittedBy: staff._id,
             submittedByRole: staff.role,
             gradedAt: new Date(),
