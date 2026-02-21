@@ -18,6 +18,26 @@ const DETERMINISTIC_GENERATION_CONFIG = {
     topP: 0.01,
     responseMimeType: "application/json",
 };
+function getStudentMimeType(file) {
+    if (file && file.mimetype) {
+        return file.mimetype;
+    }
+    return "application/pdf";
+}
+
+function getStudentUploadFormat(file) {
+    const mimeType = getStudentMimeType(file);
+    if (
+        mimeType ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ) {
+        return "docx";
+    }
+    if (mimeType === "application/msword") {
+        return "doc";
+    }
+    return "pdf";
+}
 
 function buildDeterministicPayload(parts) {
     return {
@@ -151,6 +171,9 @@ exports.submitAssignment = async(req, res) => {
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
         }
+        if (!req.file.buffer && !req.file.path) {
+            return res.status(400).json({ message: "Invalid PDF upload" });
+        }
 
         if (!req.file.buffer) {
             return res.status(400).json({ message: "Invalid PDF upload" });
@@ -189,6 +212,8 @@ exports.submitAssignment = async(req, res) => {
         }
 
         const studentPdf = req.file.buffer;
+        const studentMimeType = getStudentMimeType(req.file);
+        const studentUploadFormat = getStudentUploadFormat(req.file);
         const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
 
         // 🔒 Identical file check
@@ -204,7 +229,8 @@ exports.submitAssignment = async(req, res) => {
         if (studentHash === modelHash) {
             const uploadedSubmission = await uploadPdfBuffer(
                 req.file.buffer,
-                "sa7a7ly/submissions"
+                "sa7a7ly/submissions",
+                studentUploadFormat
             );
             const submission = await Submission.create({
                 assignmentId,
@@ -231,7 +257,7 @@ exports.submitAssignment = async(req, res) => {
         }
 
 
-        const prompt = `
+const prompt = `
 You are a strict academic essay examiner.
 
 First, detect the primary language of the assignment (Arabic or English).
@@ -361,7 +387,7 @@ ONLY return pure JSON.
             { text: prompt },
             {
                 inlineData: {
-                    mimeType: "application/pdf",
+                    mimeType: studentMimeType,
                     data: studentPdf.toString("base64"),
                 },
             },
@@ -461,7 +487,8 @@ ONLY return pure JSON.
 
         const uploadedSubmission = await uploadPdfBuffer(
             req.file.buffer,
-            "sa7a7ly/submissions"
+            "sa7a7ly/submissions",
+            studentUploadFormat
         );
         const submission = await Submission.create({
             assignmentId,
@@ -565,8 +592,10 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             });
         }
 
-        const studentPdf = fs.readFileSync(req.file.path);
-        const modelPdf = fs.readFileSync(assignment.modelAnswerPdfPath);
+        const studentPdf = req.file.buffer || fs.readFileSync(req.file.path);
+        const studentMimeType = getStudentMimeType(req.file);
+        const studentUploadFormat = getStudentUploadFormat(req.file);
+        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
 
         const studentHash = crypto
             .createHash("sha256")
@@ -578,11 +607,21 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             .digest("hex");
 
         if (studentHash === modelHash) {
+            let pdfPath = req.file.path || null;
+            if (req.file.buffer) {
+                const uploadedSubmission = await uploadPdfBuffer(
+                    req.file.buffer,
+                    "sa7a7ly/submissions",
+                    studentUploadFormat
+                );
+                pdfPath = uploadedSubmission.secure_url;
+            }
+
             const submission = await Submission.create({
                 assignmentId,
                 studentId: studentId || null,
                 studentName: normalizedStudentName,
-                pdfPath: req.file.path,
+                pdfPath,
                 grade: assignment.totalPoints,
                 feedback: "Identical to model answer. Full marks awarded.",
                 submittedBy: staff._id,
@@ -682,7 +721,7 @@ ONLY return pure JSON.
             { text: prompt },
             {
                 inlineData: {
-                    mimeType: "application/pdf",
+                    mimeType: studentMimeType,
                     data: studentPdf.toString("base64"),
                 },
             },
@@ -750,11 +789,21 @@ ONLY return pure JSON.
             });
         }
 
+        let pdfPath = req.file.path || null;
+        if (req.file.buffer) {
+            const uploadedSubmission = await uploadPdfBuffer(
+                req.file.buffer,
+                "sa7a7ly/submissions",
+                studentUploadFormat
+            );
+            pdfPath = uploadedSubmission.secure_url;
+        }
+
         const submission = await Submission.create({
             assignmentId,
             studentId: studentId || null,
             studentName: normalizedStudentName,
-            pdfPath: req.file.path,
+            pdfPath,
             grade: result.totalGrade,
             feedback: feedbackText.trim(),
             submittedBy: staff._id,
