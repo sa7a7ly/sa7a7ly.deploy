@@ -15,7 +15,9 @@ const GEMINI_URL =
 const DETERMINISTIC_GENERATION_CONFIG = {
     temperature: 0,
     topK: 1,
-    topP: 0.01,
+    topP: 0,
+    candidateCount: 1,
+    seed: 42,
     responseMimeType: "application/json",
 };
 function getStudentMimeType(file) {
@@ -44,6 +46,22 @@ function buildDeterministicPayload(parts) {
         contents: [{ parts }],
         generationConfig: DETERMINISTIC_GENERATION_CONFIG,
     };
+}
+
+function resolveQuestionReason(question) {
+    const candidate = question?.feedback ?? question?.reasonForDeduction;
+    if (typeof candidate !== "string") {
+        return "No reason provided";
+    }
+    const normalized = candidate.trim();
+    if (!normalized) {
+        return "No reason provided";
+    }
+    const lower = normalized.toLowerCase();
+    if (lower === "undefined" || lower === "null" || lower === "n/a") {
+        return "No reason provided";
+    }
+    return normalized;
 }
 
 // Helper: Call Gemini with retry
@@ -258,130 +276,120 @@ exports.submitAssignment = async(req, res) => {
 
 
 const prompt = `
-You are a strict academic essay examiner.
+You are a strict academic examiner.
 
-First, detect the primary language of the assignment (Arabic or English).
-If the assignment content is mostly Arabic, ALL feedback must be written in Arabic.
-If the assignment content is mostly English, ALL feedback must be written in English.
+Compare the STUDENT PDF with the MODEL ANSWER PDF.
 
-Compare the STUDENT PDF and MODEL ANSWER PDF.
+The MODEL ANSWER is the ONLY source of truth.
 
-TWO-PHASE EVALUATION (MANDATORY):
+You MUST infer from the MODEL ANSWER:
 
-Phase 1 – Spelling Audit:
-Scan the entire student essay word-by-word and extract ALL spelling mistakes.
-Store them internally as a list of (wrong_word → correct_word).
+- Expected structure
+- Required content
+- Required language level
+- Mark distribution
+- Writing style expectations
+- Any mandatory elements
 
-Do NOT grade yet.
-Do NOT analyze content yet.
+Do NOT assume any fixed format.
+Do NOT assume this is a personal letter.
+Do NOT assume Arabic rhetoric unless the MODEL shows it.
+Do NOT assume specific sections unless they appear in the MODEL.
 
-Phase 2 – Full Evaluation:
-After completing Phase 1, perform the full evaluation strictly following the MODEL ANSWER grading rules.
+------------------------------------------------------------
+PRESENTATION RULE
+------------------------------------------------------------
 
-During feedback generation:
-- Output spelling mistakes FIRST.
-- Then output all remaining mistakes (grammar, style, content, logic).
+Ignore handwriting quality, page cleanliness, crossings-out, spacing, or formatting.
+Grade ONLY written content.
 
-MODEL ANSWER FEEDBACK AUTHORITY:
+------------------------------------------------------------
+LANGUAGE DETECTION
+------------------------------------------------------------
 
-If the MODEL ANSWER contains ANY feedback instructions:
-- Treat them as HARD REQUIREMENTS.
-- Follow them EXACTLY.
-- They override ALL feedback rules in this prompt.
+Detect whether the student's writing is mostly Arabic or English.
+All feedback must be written in that language.
 
-GRADING RULES:
+------------------------------------------------------------
+GRADING RULES
+------------------------------------------------------------
 
-If the MODEL ANSWER includes a mark scheme, rubric, or explicit marking criteria:
-- Follow it strictly as the highest priority.
-- Do not use a different grading style.
-- Do not change weights, criteria, or distribution defined by that mark scheme.
-- If two interpretations are possible, choose the one most consistent with the given mark scheme.
+Total marks = ${assignment.totalPoints}.
 
-GENERAL EVALUATION RULES:
+Split marks into:
 
-The essay must be evaluated as a whole out of 20 marks:
-- 10 marks for CONTENT (clarity of ideas, relevance to topic, depth, organization, coherence).
-- 10 marks for LANGUAGE (grammar, spelling, style, punctuation, structure).
+- Content
+- Language
 
-FEEDBACK ENFORCEMENT (CRITICAL):
+You MUST determine the correct weighting based on the MODEL ANSWER.
 
-Only include parts where the student LOST marks.
-Completely omit fully correct parts.
+------------------------------------------------------------
+EVALUATION PROCESS (MANDATORY)
+------------------------------------------------------------
 
-For EVERY incorrect part:
+1. Extract required ideas and structure from MODEL ANSWER.
+2. Compare student work against them.
+3. Identify missing, incorrect, or weak content.
+4. Identify spelling, grammar, and language quality issues.
+5. Deduct marks logically based on importance.
 
-You MUST perform a full audit.
+Do NOT invent requirements not present in MODEL.
 
-You MUST list ALL mistakes individually without exception.
+------------------------------------------------------------
+OUTPUT FORMAT INSIDE reasonForDeduction 
+------------------------------------------------------------
 
-This includes:
-- Spelling mistakes (EVERY misspelled word must be shown and corrected FIRST)
-- Grammar mistakes
-- Stylistic issues
-- Punctuation errors
-- Content mistakes
-- Logical weaknesses
-- Missing ideas
-- Weak argumentation
+Inside "reasonForDeduction", output ONLY:
 
-NO summarizing.
-NO grouping.
-NO sampling.
-EVERY mistake must appear separately.
+التقييم بالمضمون:
+- اذكر أخطاء المضمون أو النقص مقارنة بالنموذج.
+- اذكر الدرجة النهائية للمضمون.
 
-For EACH mistake you MUST provide:
+التقييم اللغوي:
+- اذكر الأخطاء الإملائية (خطأ ← تصحيح).
+- اذكر الأخطاء النحوية أو الأسلوبية إن وُجدت.
+- اذكر الدرجة النهائية للغة.
 
-1) The exact wrong text from the student.
-2) Explanation of why it is incorrect.
-3) The correct rule or correct concept.
-4) The corrected version OR a strong correct example.
+عدد الكلمات:
+- اذكر التقدير التقريبي لعدد كلمات الطالب.
+- اذكر العدد المطلوب حسب النموذج إن وُجد.
+- هل استوفى الشرط أم لا (نعم / لا).
 
-Professional academic tone is required.
-Do NOT shorten explanations.
-Completeness is more important than brevity.
-There is NO length limit.
+STRICT:
 
-MAJOR MISTAKES SECTION:
+- Do NOT add any other sections.
+- Do NOT teach.
+- Do NOT add examples.
+- Do NOT invent mistakes.
+- Do NOT add general summaries.
+- You Must wrte the feedback as if you are teacher , talk directly to the student and dont mention the model
 
-Contains ONLY a high-level summary of recurring serious problems.
-
-IMPROVEMENT ADVICE SECTION:
-
-Provide concrete technical recommendations based directly on the student's detected weaknesses.
-
-VERIFICATION BEFORE RETURNING:
-
-Pass 0: Ensure spelling audit completed.
-Pass 1: Scan essay line-by-line and extract ALL mistakes.
-Pass 2: Confirm EVERY mistake appears with correction.
-Pass 3: Ensure grading distribution matches 10 content + 10 language.
-Pass 4: Verify totalGrade equals sum of awarded marks.
-
-If ANY mistake is skipped, the response is INVALID.
-
-Return ONLY valid JSON:
+------------------------------------------------------------
+RETURN ONLY VALID JSON
+------------------------------------------------------------
 
 {
-"detectedLanguage": "arabic or english",
-"totalGrade": number,
-"questions": [
-{
-"questionNumber": "Essay",
-"maxMarks": 20,
-"studentMarks": number,
-"marksLost": number,
-"reasonForDeduction": "FULL audit listing every mistake with correct concepts and corrected examples"
-}
-],
-"overallSummary": "Strict professional evaluation",
-"majorMistakes": ["high-level summary only"],
-"improvementAdvice": ["concrete technical advice"]
+  "detectedLanguage": "arabic or english",
+  "totalGrade": number,
+  "questions": [
+    {
+      "questionNumber": "Assignment",
+      "maxMarks": ${assignment.totalPoints},
+      "studentMarks": number,
+      "marksLost": number,
+      "reasonForDeduction": "As instructed above"
+    }
+  ]
 }
 
-DO NOT return markdown.
-ONLY return pure JSON.
+Ensure:
+
+studentMarks ≤ maxMarks  
+marksLost = maxMarks − studentMarks  
+totalGrade = studentMarks  
+
+Return ONLY pure JSON.
 `;
-
 
         const payload = buildDeterministicPayload([
             { text: prompt },
@@ -458,9 +466,10 @@ ONLY return pure JSON.
                     `الدرجات المفقودة: ${q.marksLost}\n` :
                     `Marks Lost: ${q.marksLost}\n`;
 
+                const questionReason = resolveQuestionReason(q);
                 feedbackText += isArabic ?
-                    `سبب الخصم: ${q.reasonForDeduction}\n\n` :
-                    `Reason: ${q.reasonForDeduction}\n\n`;
+                    `سبب الخصم: ${questionReason}\n\n` :
+                    `Reason: ${questionReason}\n\n`;
             });
         }
 
@@ -646,6 +655,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
 You are a strict university professor.
 
 Compare the STUDENT PDF and MODEL ANSWER PDF.
+Ignore page cleanliness, handwriting quality, crossings-out, or any visual mess; grade only the written content.
 
 GRADING RULES:
 
@@ -769,7 +779,8 @@ ONLY return pure JSON.
                 feedbackText += `Max Marks: ${q.maxMarks}\n`;
                 feedbackText += `Your Marks: ${q.studentMarks}\n`;
                 feedbackText += `Marks Lost: ${q.marksLost}\n`;
-                feedbackText += `Reason: ${q.reasonForDeduction}\n\n`;
+                const questionReason = resolveQuestionReason(q);
+                feedbackText += `Reason: ${questionReason}\n\n`;
             });
         }
 
