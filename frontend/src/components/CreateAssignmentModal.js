@@ -8,6 +8,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     totalPoints: '',
     pdf: null,
     dueDate: '',
+    resultVisibility: 'IMMEDIATE',
   });
   const [loading, setLoading] = useState(false);
   const { t } = useI18n();
@@ -40,6 +41,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     if (formData.dueDate) {
       formDataToSend.append('dueDate', formData.dueDate);
     }
+    formDataToSend.append('resultVisibility', formData.resultVisibility);
     if (formData.pdf) {
       formDataToSend.append('pdf', formData.pdf);
     }
@@ -133,6 +135,31 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
             />
             <p className="mt-2 text-sm text-slate-500">
               {t('createAssignment.dueDateHelp')}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">
+              {t('createAssignment.resultVisibility')}
+            </label>
+            <select
+              name="resultVisibility"
+              value={formData.resultVisibility}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="IMMEDIATE">
+                {t('createAssignment.visibilityImmediate')}
+              </option>
+              <option value="AFTER_DEADLINE">
+                {t('createAssignment.visibilityAfterDeadline')}
+              </option>
+              <option value="AFTER_REVIEW">
+                {t('createAssignment.visibilityAfterReview')}
+              </option>
+            </select>
+            <p className="mt-2 text-sm text-slate-500">
+              {t('createAssignment.resultVisibilityHelp')}
             </p>
           </div>
 

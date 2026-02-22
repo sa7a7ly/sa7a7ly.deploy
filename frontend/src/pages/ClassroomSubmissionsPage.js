@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import {
   getClassroom,
   getSubmissions,
+  getSubmissionPdf,
+  markSubmissionsReviewed,
+  updateSubmission,
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import logo from '../images/image.png';
@@ -18,6 +21,10 @@ const ClassroomSubmissionsPage = () => {
   const [classroom, setClassroom] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [openFeedback, setOpenFeedback] = useState({});
+  const [editingFeedback, setEditingFeedback] = useState({});
+  const [editingGrade, setEditingGrade] = useState({});
+  const [savingSubmissionId, setSavingSubmissionId] = useState(null);
+  const [publishingAll, setPublishingAll] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -120,6 +127,87 @@ const ClassroomSubmissionsPage = () => {
     }));
   };
 
+  const handleFeedbackChange = (id, value) => {
+    setEditingFeedback((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  };
+
+  const handleGradeChange = (id, value) => {
+    setEditingGrade((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  };
+
+  const handleSaveReview = async (submission) => {
+    const nextFeedback = Object.prototype.hasOwnProperty.call(editingFeedback, submission._id)
+      ? editingFeedback[submission._id]
+      : submission.feedback || '';
+    const nextGradeRaw = Object.prototype.hasOwnProperty.call(editingGrade, submission._id)
+      ? editingGrade[submission._id]
+      : submission.grade;
+
+    const payload = { feedback: nextFeedback };
+    if (nextGradeRaw !== '' && nextGradeRaw != null) {
+      payload.grade = Number(nextGradeRaw);
+    }
+
+    try {
+      setSavingSubmissionId(submission._id);
+      const response = await updateSubmission(submission._id, payload);
+      const updatedSubmission = response.data;
+      setSubmissions((prev) =>
+        prev.map((item) =>
+          item._id === submission._id ? { ...item, ...updatedSubmission } : item
+        )
+      );
+      setEditingFeedback((prev) => {
+        const next = { ...prev };
+        delete next[submission._id];
+        return next;
+      });
+      setEditingGrade((prev) => {
+        const next = { ...prev };
+        delete next[submission._id];
+        return next;
+      });
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
+    } finally {
+      setSavingSubmissionId(null);
+    }
+  };
+
+  const handlePublishAllReviewed = async () => {
+    try {
+      setPublishingAll(true);
+      await markSubmissionsReviewed({ classroomId });
+      await fetchData();
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to publish reviewed submissions');
+    } finally {
+      setPublishingAll(false);
+    }
+  };
+
+  const handleViewPdf = async (submissionId) => {
+    try {
+      const response = await getSubmissionPdf(submissionId);
+      const blobUrl = window.URL.createObjectURL(response.data);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+      }, 60000);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to open PDF');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <nav className="bg-white shadow-sm">
@@ -178,6 +266,14 @@ const ClassroomSubmissionsPage = () => {
               <p className="mt-3 text-slate-700">
                 {t('resubmissions.review')}
               </p>
+              <button
+                type="button"
+                onClick={handlePublishAllReviewed}
+                disabled={publishingAll || submissions.length === 0}
+                className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {publishingAll ? t('common.loading') : 'Publish all as reviewed'}
+              </button>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white/80 px-6 py-4 text-center shadow-sm">
               <p className="text-2xl font-bold text-slate-900">
@@ -274,6 +370,15 @@ const ClassroomSubmissionsPage = () => {
                         <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">
                           {t('submit.grade')}: {submission.grade ?? 'N/A'}
                         </span>
+                        <span
+                          className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                            submission.reviewedByStaffAt
+                              ? 'bg-sky-100 text-sky-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {submission.reviewedByStaffAt ? 'Reviewed' : 'Pending review'}
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -284,9 +389,63 @@ const ClassroomSubmissionsPage = () => {
                           ? t('common.close')
                           : t('submit.feedback')}
                       </button>
+                      {submission.pdfPath && (
+                        <button
+                          type="button"
+                          onClick={() => handleViewPdf(submission._id)}
+                          className="mt-3 ml-2 inline-flex rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          {t('common.viewPdf')}
+                        </button>
+                      )}
                       {openFeedback[submission._id] && (
-                        <div className="mt-3 text-sm text-slate-700 whitespace-pre-line">
-                          {submission.feedback}
+                        <div className="mt-3 space-y-3">
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              {t('submit.grade')}
+                            </p>
+                            <input
+                              type="number"
+                              value={
+                                Object.prototype.hasOwnProperty.call(editingGrade, submission._id)
+                                  ? editingGrade[submission._id]
+                                  : submission.grade ?? ''
+                              }
+                              onChange={(e) =>
+                                handleGradeChange(submission._id, e.target.value)
+                              }
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                              {t('submit.feedback')}
+                            </p>
+                            <textarea
+                              rows={8}
+                              value={
+                                Object.prototype.hasOwnProperty.call(editingFeedback, submission._id)
+                                  ? editingFeedback[submission._id]
+                                  : submission.feedback || ''
+                              }
+                              onChange={(e) =>
+                                handleFeedbackChange(submission._id, e.target.value)
+                              }
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={savingSubmissionId === submission._id}
+                            onClick={() => handleSaveReview(submission)}
+                            className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {savingSubmissionId === submission._id
+                              ? t('common.loading')
+                              : t('common.update')}
+                          </button>
                         </div>
                       )}
                     </div>

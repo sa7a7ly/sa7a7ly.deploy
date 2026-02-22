@@ -34,6 +34,11 @@ const assignmentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    resultVisibility: {
+      type: String,
+      enum: ['IMMEDIATE', 'AFTER_DEADLINE', 'AFTER_REVIEW'],
+      default: 'IMMEDIATE',
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

@@ -8,6 +8,24 @@ const ROLE = {
   TEACHER: 'TEACHER',
   ASSISTANT: 'ASSISTANT',
 };
+const RESULT_VISIBILITY = {
+  IMMEDIATE: 'IMMEDIATE',
+  AFTER_DEADLINE: 'AFTER_DEADLINE',
+  AFTER_REVIEW: 'AFTER_REVIEW',
+};
+
+function normalizeResultVisibility(value) {
+  if (!value) return RESULT_VISIBILITY.IMMEDIATE;
+  const normalized = String(value).trim().toUpperCase();
+  if (
+    normalized === RESULT_VISIBILITY.IMMEDIATE ||
+    normalized === RESULT_VISIBILITY.AFTER_DEADLINE ||
+    normalized === RESULT_VISIBILITY.AFTER_REVIEW
+  ) {
+    return normalized;
+  }
+  return null;
+}
 
 // CREATE
 exports.createAssignment = async (req, res) => {
@@ -65,6 +83,18 @@ exports.createAssignment = async (req, res) => {
     );
 
     const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
+    const normalizedDueDate =
+      dueDateValue && !Number.isNaN(dueDateValue.getTime()) ? dueDateValue : null;
+    const resultVisibility = normalizeResultVisibility(req.body.resultVisibility);
+    if (!resultVisibility) {
+      return res.status(400).json({ message: 'Invalid result visibility option' });
+    }
+    if (resultVisibility === RESULT_VISIBILITY.AFTER_DEADLINE && !normalizedDueDate) {
+      return res.status(400).json({
+        message: 'A valid due date is required when result visibility is set to after deadline',
+      });
+    }
+
     const assignment = await Assignment.create({
       classroomId: req.body.classroomId,
       title: req.body.title,
@@ -72,7 +102,8 @@ exports.createAssignment = async (req, res) => {
       modelAnswerPdfPath: uploadedModelAnswer.secure_url,
       modelAnswerText: req.body.modelAnswerText,
       totalPoints: req.body.totalPoints || 100,
-      dueDate: dueDateValue && !Number.isNaN(dueDateValue.getTime()) ? dueDateValue : null,
+      dueDate: normalizedDueDate,
+      resultVisibility,
       createdBy: creator._id,
     });
 
@@ -126,13 +157,37 @@ exports.getAssignment = async (req, res) => {
 // UPDATE
 exports.updateAssignment = async (req, res) => {
   try {
-    const assignment = await Assignment.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
+    const existingAssignment = await Assignment.findById(req.params.id);
+    if (!existingAssignment) return res.status(404).json({ message: 'Not found' });
 
-    if (!assignment) return res.status(404).json({ message: 'Not found' });
+    const hasDueDateInput = Object.prototype.hasOwnProperty.call(req.body, 'dueDate');
+    const nextDueDate = hasDueDateInput ? new Date(req.body.dueDate) : existingAssignment.dueDate;
+    const normalizedNextDueDate =
+      nextDueDate && !Number.isNaN(new Date(nextDueDate).getTime()) ? new Date(nextDueDate) : null;
+
+    const hasVisibilityInput = Object.prototype.hasOwnProperty.call(req.body, 'resultVisibility');
+    const nextVisibility = hasVisibilityInput
+      ? normalizeResultVisibility(req.body.resultVisibility)
+      : existingAssignment.resultVisibility || RESULT_VISIBILITY.IMMEDIATE;
+
+    if (!nextVisibility) {
+      return res.status(400).json({ message: 'Invalid result visibility option' });
+    }
+    if (nextVisibility === RESULT_VISIBILITY.AFTER_DEADLINE && !normalizedNextDueDate) {
+      return res.status(400).json({
+        message: 'A valid due date is required when result visibility is set to after deadline',
+      });
+    }
+
+    const updatePayload = {
+      ...req.body,
+      resultVisibility: nextVisibility,
+    };
+    if (hasDueDateInput) {
+      updatePayload.dueDate = normalizedNextDueDate;
+    }
+
+    const assignment = await Assignment.findByIdAndUpdate(req.params.id, updatePayload, { new: true });
 
     res.json(assignment);
   } catch (err) {

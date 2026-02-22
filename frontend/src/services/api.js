@@ -111,6 +111,15 @@ export const getStudentSubmissions = (studentId) =>
 export const getStudentSubmission = (assignmentId, studentId) =>
   API.get(`/submissions/by-student?assignmentId=${assignmentId}&studentId=${studentId}`);
 
+export const updateSubmission = (submissionId, data) =>
+  API.patch(`/submissions/${submissionId}`, data);
+
+export const getSubmissionPdf = (submissionId) =>
+  API.get(`/submissions/${submissionId}/pdf`, { responseType: 'blob' });
+
+export const markSubmissionsReviewed = (data) =>
+  API.post('/submissions/mark-reviewed', data);
+
 export const createResubmissionRequest = (data) =>
   API.post('/resubmissions', data);
 

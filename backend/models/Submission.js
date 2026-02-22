@@ -56,6 +56,15 @@ const submissionSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    reviewedByStaffAt: {
+      type: Date,
+      default: null,
+    },
+    reviewedByStaffId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: 'submittedAt', updatedAt: false },

@@ -180,6 +180,8 @@ const SubmitAssignmentPage = () => {
   const [resubmitReason, setResubmitReason] = useState('');
   const [requestingResubmit, setRequestingResubmit] = useState(false);
   const [existingSubmission, setExistingSubmission] = useState(null);
+  const [resultVisible, setResultVisible] = useState(true);
+  const [visibilityPolicy, setVisibilityPolicy] = useState('IMMEDIATE');
   const [infoMessage, setInfoMessage] = useState('');
   const [gradingStep, setGradingStep] = useState(0);
   const [gameMode, setGameMode] = useState('catch');
@@ -229,18 +231,26 @@ const SubmitAssignmentPage = () => {
           return;
         }
         const submission = response.data?.submission || null;
+        const isResultVisible = response.data?.resultVisible !== false;
+        const nextPolicy = response.data?.visibilityPolicy || 'IMMEDIATE';
         const latestRequest = response.data?.resubmissionRequest || null;
         setExistingSubmission(submission);
+        setResultVisible(isResultVisible);
+        setVisibilityPolicy(nextPolicy);
         setResubmissionRequest(latestRequest);
 
         if (
           submission &&
+          isResultVisible &&
           (!latestRequest ||
             latestRequest.status !== 'APPROVED' ||
             latestRequest.used)
         ) {
           setResult(submission);
           setInfoMessage(t('submit.resultTitle'));
+        } else if (submission && !isResultVisible) {
+          setResult(null);
+          setInfoMessage(getHiddenResultMessage(nextPolicy));
         }
       } catch (_) {
         // Ignore if no submission found.
@@ -326,6 +336,13 @@ const SubmitAssignmentPage = () => {
     setError(t('common.uploadPdf'));
   };
 
+  const getHiddenResultMessage = (policy) => {
+    if (policy === 'AFTER_REVIEW') {
+      return t('submit.resultHiddenUntilReview');
+    }
+    return t('submit.resultHiddenUntilDeadline');
+  };
+
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -367,12 +384,20 @@ const SubmitAssignmentPage = () => {
 
       const response = await submitAssignment(formData);
       const payload = response.data?.submission ? response.data : { submission: response.data };
+      const isResultVisible = payload.resultVisible !== false;
+      const nextPolicy = payload.visibilityPolicy || 'IMMEDIATE';
+      setResultVisible(isResultVisible);
+      setVisibilityPolicy(nextPolicy);
       if (payload.alreadySubmitted) {
-        setInfoMessage(t('submit.resultTitle'));
+        setInfoMessage(
+          isResultVisible ? t('submit.resultTitle') : getHiddenResultMessage(nextPolicy)
+        );
+      } else if (!isResultVisible) {
+        setInfoMessage(getHiddenResultMessage(nextPolicy));
       } else {
         setInfoMessage('');
       }
-      setResult(payload.submission);
+      setResult(isResultVisible ? payload.submission : null);
       setResubmissionRequest(payload.resubmissionRequest || null);
       setExistingSubmission(payload.submission);
       setPdf(null);
@@ -396,6 +421,8 @@ const SubmitAssignmentPage = () => {
     !isPastDue &&
     (!existingSubmission ||
       (resubmissionRequest?.status === 'APPROVED' && !resubmissionRequest.used));
+  const waitingForReview =
+    existingSubmission && !resultVisible && visibilityPolicy === 'AFTER_REVIEW';
 
   const handleRequestResubmission = async () => {
     if (!resubmitReason.trim()) {
@@ -1226,9 +1253,59 @@ const SubmitAssignmentPage = () => {
           resubmissionRequest?.status !== 'APPROVED' &&
           !resubmissionRequest?.used && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-700">
-              {t('submit.resultTitle')}
+              {resultVisible ? t('submit.resultTitle') : getHiddenResultMessage(visibilityPolicy)}
             </div>
           )}
+
+        {waitingForReview && (
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white">
+                REVIEW
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                  {t('submit.waitingReviewTitle')}
+                </p>
+                <h3 className="mt-1 text-2xl font-bold text-slate-900">
+                  {t('submit.resultHiddenUntilReview')}
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  {t('submit.waitingReviewBody')}
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Status
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-emerald-700">
+                      Waiting For Review
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Submitted
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {existingSubmission?.submittedAt
+                        ? new Date(existingSubmission.submittedAt).toLocaleString()
+                        : 'N/A'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Visibility
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      After Review
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm text-slate-600">{t('submit.waitingReviewHint')}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
           {isPastDue && (

@@ -87,6 +87,7 @@ const StudentDashboard = () => {
   const submittedAssignmentIds = new Set(
     submissions.map((s) => s.assignmentId?._id || s.assignmentId)
   );
+  const releasedSubmissions = submissions.filter((s) => s.resultVisible !== false);
 
   const allAssignments = Object.entries(assignmentsByClassroom).flatMap(
     ([classroomId, list]) =>
@@ -114,7 +115,7 @@ const StudentDashboard = () => {
     return new Date(a.dueDate) >= now && !submittedAssignmentIds.has(a._id);
   });
 
-  const recentFeedback = submissions
+  const recentFeedback = releasedSubmissions
     .filter((s) => s.feedback)
     .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
     .slice(0, 3);
@@ -137,15 +138,15 @@ const StudentDashboard = () => {
   });
 
   const averageGrade =
-    submissions.length > 0
+    releasedSubmissions.length > 0
       ? Math.round(
-          submissions.reduce((sum, s) => sum + (s.grade || 0), 0) /
-            submissions.length
+          releasedSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0) /
+            releasedSubmissions.length
         )
       : null;
   const latestGrade =
-    submissions.length > 0
-      ? submissions
+    releasedSubmissions.length > 0
+      ? releasedSubmissions
           .slice()
           .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0]
           ?.grade ?? null
@@ -523,7 +524,7 @@ const StudentDashboard = () => {
                 2. Submit your assignment PDF before the deadline.
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                3. Review AI feedback and improve your next submission.
+                3. Review feedback and improve your next submission.
               </div>
             </div>
           </div>

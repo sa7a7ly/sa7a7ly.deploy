@@ -32,7 +32,8 @@ const StudentProgressPage = () => {
   }, [user?._id, t]);
 
   const metrics = useMemo(() => {
-    const sorted = [...submissions].sort(
+    const releasedSubmissions = submissions.filter((s) => s.resultVisible !== false);
+    const sorted = [...releasedSubmissions].sort(
       (a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)
     );
     const points = sorted.map((s) => {

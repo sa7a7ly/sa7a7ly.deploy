@@ -126,6 +126,14 @@ const translations = {
       resultTitle: 'Submission Result',
       submitted: 'Assignment submitted!',
       gradedByAi: 'Your submission has been graded by AI.',
+      resultHiddenUntilDeadline:
+        'Your assignment is submitted. Results will be visible after the deadline.',
+      resultHiddenUntilReview:
+        'Your assignment is submitted. Results will be visible after teacher/assistant review.',
+      waitingReviewTitle: 'Submitted Successfully',
+      waitingReviewBody:
+        'Your work is waiting for teacher/assistant review. You will see your grade and feedback once review is published.',
+      waitingReviewHint: 'You can return to dashboard and check back later.',
       feedback: 'Feedback',
       grade: 'Grade',
       requestResubmit: 'Request Resubmission',
@@ -151,6 +159,12 @@ const translations = {
       modelAnswer: 'Model Answer PDF',
       dueDate: 'Due Date (Server Time)',
       dueDateHelp: 'Students will see the deadline and time left.',
+      resultVisibility: 'Result Visibility',
+      visibilityImmediate: 'Show right after submission',
+      visibilityAfterDeadline: 'Show after deadline',
+      visibilityAfterReview: 'Show after teacher/assistant review',
+      resultVisibilityHelp:
+        'Choose when students can view grades and feedback for this assignment.',
     },
     createClassroom: {
       title: 'Create Classroom',
@@ -312,6 +326,14 @@ const translations = {
       resultTitle: 'نتيجة التسليم',
       submitted: 'تم تسليم التكليف!',
       gradedByAi: 'تم تصحيح التسليم بالذكاء الاصطناعي.',
+      resultHiddenUntilDeadline:
+        'تم استلام التكليف. ستظهر النتيجة بعد انتهاء موعد التسليم.',
+      resultHiddenUntilReview:
+        'تم استلام التكليف. ستظهر النتيجة بعد مراجعة المدرس أو المساعد.',
+      waitingReviewTitle: 'تم التسليم بنجاح',
+      waitingReviewBody:
+        'تكليفك الآن في انتظار مراجعة المدرس أو المساعد. ستظهر الدرجة والملاحظات بعد نشر المراجعة.',
+      waitingReviewHint: 'يمكنك الرجوع للوحة المتابعة والعودة لاحقًا.',
       feedback: 'الملاحظات',
       grade: 'الدرجة',
       requestResubmit: 'طلب إعادة تسليم',
@@ -337,6 +359,12 @@ const translations = {
       modelAnswer: 'ملف إجابة نموذجية PDF',
       dueDate: 'موعد التسليم (بتوقيت السيرفر)',
       dueDateHelp: 'الطلبة هيشوفوا الموعد والوقت المتبقي.',
+      resultVisibility: 'إظهار النتيجة',
+      visibilityImmediate: 'تظهر بعد التسليم مباشرة',
+      visibilityAfterDeadline: 'تظهر بعد الموعد النهائي',
+      visibilityAfterReview: 'تظهر بعد مراجعة المدرس أو المساعد',
+      resultVisibilityHelp:
+        'اختار وقت ظهور الدرجة والملاحظات للطالب في هذا التكليف.',
     },
     createClassroom: {
       title: 'إنشاء فصل',

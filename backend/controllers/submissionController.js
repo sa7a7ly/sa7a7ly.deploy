@@ -8,6 +8,11 @@ const Classroom = require("../models/Classroom");
 const User = require("../models/User");
 const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
 
+const RESULT_VISIBILITY = {
+    IMMEDIATE: "IMMEDIATE",
+    AFTER_DEADLINE: "AFTER_DEADLINE",
+    AFTER_REVIEW: "AFTER_REVIEW",
+};
 
 const GEMINI_URL =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
@@ -62,6 +67,85 @@ function resolveQuestionReason(question) {
         return "No reason provided";
     }
     return normalized;
+}
+
+function isResultVisibleToUser(submission, assignment, userRole) {
+    if (userRole !== "STUDENT") {
+        return true;
+    }
+    if (!assignment) {
+        return true;
+    }
+    const visibility = assignment.resultVisibility || RESULT_VISIBILITY.IMMEDIATE;
+    if (visibility !== RESULT_VISIBILITY.AFTER_DEADLINE) {
+        if (visibility === RESULT_VISIBILITY.AFTER_REVIEW) {
+            return Boolean(submission?.reviewedByStaffAt);
+        }
+        return true;
+    }
+    if (!assignment.dueDate) {
+        return true;
+    }
+    const dueDateTime = new Date(assignment.dueDate).getTime();
+    if (Number.isNaN(dueDateTime)) {
+        return true;
+    }
+    return Date.now() >= dueDateTime;
+}
+
+function buildSubmissionResponse(submission, assignment, userRole) {
+    const resultVisible = isResultVisibleToUser(submission, assignment, userRole);
+    const visibilityPolicy = assignment?.resultVisibility || RESULT_VISIBILITY.IMMEDIATE;
+    if (!submission) {
+        return { submission: null, resultVisible, visibilityPolicy };
+    }
+
+    const submissionObject =
+        submission && typeof submission.toObject === "function" ? submission.toObject() : submission;
+
+    if (resultVisible) {
+        return { submission: submissionObject, resultVisible: true, visibilityPolicy };
+    }
+
+    return {
+        submission: {
+            ...submissionObject,
+            grade: null,
+            feedback: "",
+            gradedAt: null,
+        },
+        resultVisible: false,
+        visibilityPolicy,
+    };
+}
+
+async function canManageSubmissionForClassroom(userId, userRole, classroomId) {
+    if (!userId || !userRole) {
+        return false;
+    }
+    if (userRole === "ADMIN") {
+        return true;
+    }
+    if (userRole !== "TEACHER" && userRole !== "ASSISTANT") {
+        return false;
+    }
+
+    const classroom = await Classroom.findById(classroomId).select("teacherId assistantIds");
+    if (!classroom) {
+        return false;
+    }
+
+    if (userRole === "TEACHER") {
+        return classroom.teacherId?.toString() === userId.toString();
+    }
+    return classroom.assistantIds.some((id) => id.toString() === userId.toString());
+}
+
+async function ensureStaffCanManageClassroom(userId, userRole, classroomId) {
+    const allowed = await canManageSubmissionForClassroom(userId, userRole, classroomId);
+    if (!allowed) {
+        throw new Error("FORBIDDEN_CLASSROOM");
+    }
 }
 
 // Helper: Call Gemini with retry
@@ -222,8 +306,11 @@ exports.submitAssignment = async(req, res) => {
                 latestRequest.status !== "APPROVED" ||
                 latestRequest.used)
         ) {
+            const responsePayload = buildSubmissionResponse(existingSubmission, assignment, req.user?.role);
             return res.status(200).json({
-                submission: existingSubmission,
+                submission: responsePayload.submission,
+                resultVisible: responsePayload.resultVisible,
+                visibilityPolicy: responsePayload.visibilityPolicy,
                 alreadySubmitted: true,
                 resubmissionRequest: latestRequest || null,
             });
@@ -266,9 +353,12 @@ exports.submitAssignment = async(req, res) => {
                 latestRequest.usedAt = new Date();
                 await latestRequest.save();
             }
+            const responsePayload = buildSubmissionResponse(submission, assignment, req.user?.role);
 
             return res.status(201).json({
-                submission,
+                submission: responsePayload.submission,
+                resultVisible: responsePayload.resultVisible,
+                visibilityPolicy: responsePayload.visibilityPolicy,
                 alreadySubmitted: false,
                 resubmissionRequest: latestRequest || null,
             });
@@ -514,9 +604,12 @@ Return ONLY pure JSON.
             latestRequest.usedAt = new Date();
             await latestRequest.save();
         }
+        const responsePayload = buildSubmissionResponse(submission, assignment, req.user?.role);
 
         res.status(201).json({
-            submission,
+            submission: responsePayload.submission,
+            resultVisible: responsePayload.resultVisible,
+            visibilityPolicy: responsePayload.visibilityPolicy,
             alreadySubmitted: false,
             resubmissionRequest: latestRequest || null,
         });
@@ -842,10 +935,16 @@ ONLY return pure JSON.
 // GET submissions
 exports.getSubmissions = async(req, res) => {
     const query = {};
+    const requesterRole = req.user?.role;
+    const requesterId = req.user?.userId;
+
+    if (requesterRole === "STUDENT" && requesterId) {
+        query.studentId = requesterId;
+    }
     if (req.query.assignmentId) {
         query.assignmentId = req.query.assignmentId;
     }
-    if (req.query.studentId) {
+    if (req.query.studentId && requesterRole !== "STUDENT") {
         query.studentId = req.query.studentId;
     }
     if (req.query.classroomId) {
@@ -860,26 +959,41 @@ exports.getSubmissions = async(req, res) => {
 
     const submissions = await Submission.find(query)
         .populate("studentId", "name email")
-        .populate("assignmentId", "title totalPoints dueDate")
+        .populate("assignmentId", "title totalPoints dueDate resultVisibility")
         .skip(skip)
         .limit(limit);
+
+    const submissionsWithVisibility = submissions.map((submission) => {
+        const assignment = submission?.assignmentId || null;
+        const payload = buildSubmissionResponse(submission, assignment, requesterRole);
+        return {
+            ...payload.submission,
+            resultVisible: payload.resultVisible,
+            visibilityPolicy: payload.visibilityPolicy,
+        };
+    });
     res.set("X-Total-Count", total.toString());
     res.set("X-Page", page.toString());
     res.set("X-Limit", limit.toString());
-    res.json(submissions);
+    res.json(submissionsWithVisibility);
 };
 
 // GET single submission
 exports.getSubmission = async(req, res) => {
     const submission = await Submission.findById(req.params.id)
         .populate("studentId", "name email")
-        .populate("assignmentId", "title totalPoints");
+        .populate("assignmentId", "title totalPoints dueDate resultVisibility");
 
     if (!submission) {
         return res.status(404).json({ message: "Submission not found" });
     }
 
-    res.json(submission);
+    const payload = buildSubmissionResponse(submission, submission.assignmentId, req.user?.role);
+    res.json({
+        ...payload.submission,
+        resultVisible: payload.resultVisible,
+        visibilityPolicy: payload.visibilityPolicy,
+    });
 };
 
 // GET latest submission for a student + assignment
@@ -893,15 +1007,202 @@ exports.getStudentSubmission = async(req, res) => {
 
         const submission = await Submission.findOne({ assignmentId, studentId })
             .sort({ submittedAt: -1 })
-            .populate("assignmentId", "title totalPoints dueDate");
+            .populate("assignmentId", "title totalPoints dueDate resultVisibility");
 
         const resubmissionRequest = await ResubmissionRequest.findOne({
             assignmentId,
             studentId,
         }).sort({ createdAt: -1 });
 
-        res.json({ submission: submission || null, resubmissionRequest: resubmissionRequest || null });
+        const payload = buildSubmissionResponse(
+            submission,
+            submission ? submission.assignmentId : null,
+            req.user?.role
+        );
+
+        res.json({
+            submission: payload.submission,
+            resultVisible: payload.resultVisible,
+            visibilityPolicy: payload.visibilityPolicy,
+            resubmissionRequest: resubmissionRequest || null,
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+};
+
+// POST mark reviewed in bulk (teacher/assistant/admin)
+exports.markSubmissionsReviewed = async(req, res) => {
+    try {
+        const { classroomId, assignmentId } = req.body || {};
+        if (!classroomId && !assignmentId) {
+            return res.status(400).json({ message: "classroomId or assignmentId is required" });
+        }
+
+        const userId = req.user?.userId;
+        const userRole = req.user?.role;
+        const now = new Date();
+        const query = {};
+
+        if (assignmentId) {
+            const assignment = await Assignment.findById(assignmentId).select("classroomId");
+            if (!assignment) {
+                return res.status(404).json({ message: "Assignment not found" });
+            }
+            try {
+                await ensureStaffCanManageClassroom(userId, userRole, assignment.classroomId);
+            } catch (err) {
+                if (err.message === "FORBIDDEN_CLASSROOM") {
+                    return res.status(403).json({ message: "Not allowed to review this assignment" });
+                }
+                throw err;
+            }
+            query.assignmentId = assignmentId;
+        } else {
+            const classroom = await Classroom.findById(classroomId).select("_id");
+            if (!classroom) {
+                return res.status(404).json({ message: "Classroom not found" });
+            }
+            try {
+                await ensureStaffCanManageClassroom(userId, userRole, classroomId);
+            } catch (err) {
+                if (err.message === "FORBIDDEN_CLASSROOM") {
+                    return res.status(403).json({ message: "Not allowed to review this classroom" });
+                }
+                throw err;
+            }
+            const assignments = await Assignment.find({ classroomId }).select("_id");
+            query.assignmentId = { $in: assignments.map((a) => a._id) };
+        }
+
+        const updateResult = await Submission.updateMany(query, {
+            $set: {
+                reviewedByStaffAt: now,
+                reviewedByStaffId: userId || null,
+            },
+        });
+
+        return res.json({
+            message: "Submissions marked as reviewed",
+            matchedCount: updateResult.matchedCount || 0,
+            modifiedCount: updateResult.modifiedCount || 0,
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+// PATCH submission review (teacher/assistant/admin)
+exports.updateSubmissionReview = async(req, res) => {
+    try {
+        const submission = await Submission.findById(req.params.id);
+        if (!submission) {
+            return res.status(404).json({ message: "Submission not found" });
+        }
+
+        const assignment = await Assignment.findById(submission.assignmentId).select(
+            "classroomId totalPoints dueDate resultVisibility title"
+        );
+        if (!assignment) {
+            return res.status(404).json({ message: "Assignment not found" });
+        }
+
+        const allowed = await canManageSubmissionForClassroom(
+            req.user?.userId,
+            req.user?.role,
+            assignment.classroomId
+        );
+        if (!allowed) {
+            return res.status(403).json({ message: "Not allowed to edit this submission" });
+        }
+
+        const hasFeedback = Object.prototype.hasOwnProperty.call(req.body, "feedback");
+        const hasGrade = Object.prototype.hasOwnProperty.call(req.body, "grade");
+        const markReviewed = req.body.markReviewed === true || req.body.markReviewed === "true";
+        if (!hasFeedback && !hasGrade && !markReviewed) {
+            return res.status(400).json({ message: "Nothing to update" });
+        }
+
+        if (hasFeedback) {
+            submission.feedback = String(req.body.feedback || "").trim();
+        }
+
+        if (hasGrade) {
+            const parsedGrade = Number(req.body.grade);
+            if (!Number.isFinite(parsedGrade)) {
+                return res.status(400).json({ message: "Grade must be a valid number" });
+            }
+            if (parsedGrade < 0 || parsedGrade > assignment.totalPoints) {
+                return res.status(400).json({
+                    message: `Grade must be between 0 and ${assignment.totalPoints}`,
+                });
+            }
+            submission.grade = parsedGrade;
+        }
+
+        if (hasFeedback || hasGrade || markReviewed) {
+            submission.reviewedByStaffAt = new Date();
+            submission.reviewedByStaffId = req.user?.userId || null;
+        }
+        submission.gradedAt = new Date();
+        await submission.save();
+
+        const updated = await Submission.findById(submission._id)
+            .populate("studentId", "name email")
+            .populate("assignmentId", "title totalPoints dueDate resultVisibility");
+
+        const payload = buildSubmissionResponse(updated, assignment, req.user?.role);
+
+        return res.json({
+            ...payload.submission,
+            resultVisible: payload.resultVisible,
+            visibilityPolicy: payload.visibilityPolicy,
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+// GET submission PDF (authenticated proxy)
+exports.getSubmissionPdf = async(req, res) => {
+    try {
+        const submission = await Submission.findById(req.params.id).select(
+            "assignmentId studentId pdfPath"
+        );
+        if (!submission) {
+            return res.status(404).json({ message: "Submission not found" });
+        }
+
+        const assignment = await Assignment.findById(submission.assignmentId).select(
+            "classroomId dueDate resultVisibility"
+        );
+        if (!assignment) {
+            return res.status(404).json({ message: "Assignment not found" });
+        }
+
+        const userRole = req.user?.role;
+        const userId = req.user?.userId;
+
+        let allowed = false;
+        if (userRole === "ADMIN") {
+            allowed = true;
+        } else if (userRole === "TEACHER" || userRole === "ASSISTANT") {
+            allowed = await canManageSubmissionForClassroom(userId, userRole, assignment.classroomId);
+        } else if (userRole === "STUDENT") {
+            allowed =
+                submission.studentId &&
+                submission.studentId.toString() === userId?.toString();
+        }
+
+        if (!allowed) {
+            return res.status(403).json({ message: "Not allowed to view this PDF" });
+        }
+
+        const pdfBuffer = await getPdfBuffer(submission.pdfPath);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="submission-${submission._id}.pdf"`);
+        return res.send(pdfBuffer);
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
     }
 };
