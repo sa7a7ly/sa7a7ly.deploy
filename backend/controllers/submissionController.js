@@ -11,6 +11,7 @@ const {
     checkVisionOcrHealth,
     extractTextFromPdfBuffer,
 } = require("../services/visionOcr");
+const { cleanArabicOcrText } = require("../services/arabicOcrCleaner");
 
 const RESULT_VISIBILITY = {
     IMMEDIATE: "IMMEDIATE",
@@ -279,7 +280,11 @@ async function getPdfBuffer(source, fallbackBuffer) {
 async function extractTextForGrading(pdfBuffer, sourceLabel) {
     try {
         const extractedText = await extractTextFromPdfBuffer(pdfBuffer, { sourceLabel });
-        const trimmedText = trimOcrTextForPrompt(extractedText);
+        const cleanedText = cleanArabicOcrText(extractedText);
+        const normalizedRawText =
+            typeof extractedText === "string" ? extractedText.replace(/\s+/g, " ").trim() : "";
+        const textForPrompt = cleanedText && cleanedText.trim() ? cleanedText : normalizedRawText;
+        const trimmedText = trimOcrTextForPrompt(textForPrompt);
         if (!trimmedText.trim()) {
             throw new Error("No OCR text extracted");
         }
@@ -418,94 +423,153 @@ exports.submitAssignment = async(req, res) => {
             }
         }
 
-        const prompt = `
-You are a strict academic examiner.
+const prompt = `
+You are a strict academic examiner, but tolerant of OCR and handwriting noise.
 
-Compare STUDENT_TEXT with MODEL_TEXT.
+Compare the STUDENT PDF with the MODEL ANSWER PDF.
 
 The MODEL ANSWER is the ONLY source of truth.
 
-You MUST infer from the MODEL ANSWER:
-
-- Expected structure
-- Required content
-- Required language level
-- Mark distribution
-- Writing style expectations
-- Any mandatory elements
-
-Do NOT assume any fixed format.
-Do NOT assume this is a personal letter.
-Do NOT assume Arabic rhetoric unless the MODEL shows it.
-Do NOT assume specific sections unless they appear in the MODEL.
-
 ------------------------------------------------------------
-PRESENTATION RULE
+NOISE TOLERANCE RULE (IMPORTANT)
 ------------------------------------------------------------
 
-Ignore handwriting quality, page cleanliness, crossings-out, spacing, or formatting.
-Grade ONLY written content.
+The following issues must NOT be counted as language mistakes,
+but the meaning should still be evaluated normally.
+
+Do NOT deduct language marks for:
+
+1) First or last letter mistakes in a word.
+
+2) All hamza variations:
+أ إ آ ؤ ئ ء
+
+3) These Arabic letter substitutions:
+
+ب ↔ ت ↔ ث  
+ج ↔ ح ↔ خ  
+د ↔ ذ  
+ر ↔ ز  
+س ↔ ش  
+ص ↔ ض  
+ط ↔ ظ  
+ع ↔ غ  
+ف ↔ ق  
+ك ↔ ل  
+م ↔ ن  
+ه ↔ ة  
+ي ↔ ن  
+ى ↔ ي  
+
+or any other letter that might cause confusion
+
+4) Missing or extra dots.
+
+5) OCR noise such as:
+- merged words
+- broken words
+- duplicated words
+- missing or extra spaces
+- stretched letters
+- punctuation differences
+- minor formatting issues
+
+These must NOT reduce language marks.
 
 ------------------------------------------------------------
 LANGUAGE DETECTION
 ------------------------------------------------------------
 
 Detect whether the student's writing is mostly Arabic or English.
-All feedback must be written in that language.
+ALL feedback must be written in that detected language.
 
 ------------------------------------------------------------
-GRADING RULES
+CONTENT GRADING (MODERATELY LENIENT)
 ------------------------------------------------------------
 
-Total marks = ${assignment.totalPoints}.
+Be fair and slightly lenient.
+
+If the student expresses the same idea using different wording,
+count it as correct.
+
+Deduct content marks ONLY if:
+
+- A core idea is missing
+- A required concept is absent
+- Meaning is clearly incorrect
+
+Do NOT deduct for wording differences.
+
+------------------------------------------------------------
+LANGUAGE GRADING RULE
+------------------------------------------------------------
+
+Language deduction rule:
+
+it must be strict and real
+Only count TRUE grammar or spelling mistakes
+AFTER excluding all noise cases listed above.
+
+You Cant deduct any grade if there is no mistakes
+
+------------------------------------------------------------
+PRESENTATION
+------------------------------------------------------------
+
+Ignore handwriting quality, layout, or page cleanliness.
+
+Grade only meaning and language accuracy.
+
+------------------------------------------------------------
+GRADING
+------------------------------------------------------------
+
+Total marks = ${assignment.totalPoints}
 
 Split marks into:
 
 - Content
 - Language
 
-You MUST determine the correct weighting based on the MODEL ANSWER.
+Determine weighting based on MODEL ANSWER.
 
 ------------------------------------------------------------
-EVALUATION PROCESS (MANDATORY)
+PROCESS
 ------------------------------------------------------------
 
-1. Extract required ideas and structure from MODEL ANSWER.
-2. Compare student work against them.
-3. Identify missing, incorrect, or weak content.
-4. Identify spelling, grammar, and language quality issues.
-5. Deduct marks logically based on importance.
-
-Do NOT invent requirements not present in MODEL.
+1. Extract required ideas from MODEL.
+2. Compare student meaning.
+3. Identify missing core ideas.
+4. Count REAL language mistakes only.
+5. Apply: 4 mistakes = minus 1 mark.
 
 ------------------------------------------------------------
-OUTPUT FORMAT INSIDE reasonForDeduction 
+OUTPUT FORMAT INSIDE reasonForDeduction
 ------------------------------------------------------------
 
-Inside "reasonForDeduction", output ONLY:
+ONLY:
 
 التقييم بالمضمون:
-- اذكر أخطاء المضمون أو النقص مقارنة بالنموذج.
-- اذكر الدرجة النهائية للمضمون.
+- اذكر النقص الحقيقي في الأفكار.
+- درجة المضمون.
 
 التقييم اللغوي:
-- اذكر الأخطاء الإملائية (خطأ ← تصحيح).
-- اذكر الأخطاء النحوية أو الأسلوبية إن وُجدت.
-- اذكر الدرجة النهائية للغة.
+- الأخطاء الحقيقية فقط (خطأ ← تصحيح).
+- عدد الأخطاء.
+- درجة اللغة (حسب قاعدة ٤ = درجة).
 
 عدد الكلمات:
-- اذكر التقدير التقريبي لعدد كلمات الطالب.
-- اذكر العدد المطلوب حسب النموذج إن وُجد.
-- هل استوفى الشرط أم لا (نعم / لا).
+- تقدير عدد كلمات الطالب.
+- العدد المطلوب إن وُجد.
+- هل استوفى الشرط (نعم / لا).
 
 STRICT:
 
-- Do NOT add any other sections.
 - Do NOT teach.
-- Do NOT add examples.
+- Do NOT summarize.
 - Do NOT invent mistakes.
-- Do NOT add general summaries.
-- You Must wrte the feedback as if you are teacher , talk directly to the student and dont mention the model
+- Talk directly to the student.
+-dont mention the rules and marking rules
 
 ------------------------------------------------------------
 RETURN ONLY VALID JSON
