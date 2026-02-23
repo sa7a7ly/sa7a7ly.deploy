@@ -10,6 +10,23 @@ import {
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import logo from '../images/image.png';
+import pdfLogo from '../images/ms_Eman_logo.jpeg';
+
+const loadImageAsDataUrl = (src) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
 
 const GradeOnBehalfPage = () => {
   const { classroomId } = useParams();
@@ -154,7 +171,7 @@ const GradeOnBehalfPage = () => {
     }
   };
 
-  const buildFeedbackPdf = ({ student, assignmentTitle, grade, feedback }) => {
+  const buildFeedbackPdf = async ({ student, assignmentTitle, grade, feedback }) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -166,12 +183,19 @@ const GradeOnBehalfPage = () => {
     doc.setDrawColor(226, 232, 240);
     doc.line(0, 38, pageWidth, 38);
 
+    try {
+      const logoDataUrl = await loadImageAsDataUrl(pdfLogo);
+      doc.addImage(logoDataUrl, 'PNG', margin, 8, 24, 24);
+    } catch (_) {
+      // If logo fails, continue without it.
+    }
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text('Assignment Feedback', margin, 20);
+    doc.text('Assignment Feedback', margin + 30, 20);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Sa7a7ly', margin, 28);
+    doc.text('Sa7a7ly', margin + 30, 28);
 
     y = 50;
     doc.setDrawColor(226, 232, 240);
@@ -315,13 +339,13 @@ const GradeOnBehalfPage = () => {
     return doc;
   };
 
-  const downloadFeedbackPdf = ({
+  const downloadFeedbackPdf = async ({
     student,
     assignmentTitle,
     grade,
     feedback,
   }) => {
-    const doc = buildFeedbackPdf({ student, assignmentTitle, grade, feedback });
+    const doc = await buildFeedbackPdf({ student, assignmentTitle, grade, feedback });
     const safeTitle = (assignmentTitle || 'assignment')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')

@@ -9,6 +9,7 @@ import {
 } from '../services/api';
 import { jsPDF } from 'jspdf';
 import logo from '../images/image.png';
+import pdfLogo from '../images/ms_Eman_logo.jpeg';
 import { useI18n } from '../context/I18nContext';
 
 const countArabicChars = (value) =>
@@ -515,19 +516,19 @@ const SubmitAssignmentPage = () => {
     doc.line(0, 38, pageWidth, 38);
 
     try {
-      const logoDataUrl = await loadImageAsDataUrl(logo);
-      doc.addImage(logoDataUrl, 'PNG', margin, 10, 16, 16);
+      const logoDataUrl = await loadImageAsDataUrl(pdfLogo);
+      doc.addImage(logoDataUrl, 'PNG', margin, 8, 24, 24);
     } catch (err) {
       // If logo fails, continue without it.
     }
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text('Assignment Feedback', margin + 22, 20);
+    doc.text('Assignment Feedback', margin + 30, 20);
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Sa7a7ly', margin + 22, 28);
+    doc.text('Sa7a7ly', margin + 30, 28);
 
     y = 50;
     doc.setDrawColor(226, 232, 240);
