@@ -7,6 +7,10 @@ const ResubmissionRequest = require("../models/ResubmissionRequest");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
 const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
+const {
+    checkVisionOcrHealth,
+    extractTextFromPdfBuffer,
+} = require("../services/visionOcr");
 
 const RESULT_VISIBILITY = {
     IMMEDIATE: "IMMEDIATE",
@@ -25,6 +29,17 @@ const DETERMINISTIC_GENERATION_CONFIG = {
     seed: 42,
     responseMimeType: "application/json",
 };
+const OCR_TEXT_MAX_CHARS = Number(process.env.OCR_TEXT_MAX_CHARS || 120000);
+
+function trimOcrTextForPrompt(text) {
+    if (typeof text !== "string") {
+        return "";
+    }
+    if (text.length <= OCR_TEXT_MAX_CHARS) {
+        return text;
+    }
+    return text.slice(0, OCR_TEXT_MAX_CHARS);
+}
 function getStudentMimeType(file) {
     if (file && file.mimetype) {
         return file.mimetype;
@@ -261,6 +276,29 @@ async function getPdfBuffer(source, fallbackBuffer) {
     throw new Error("Unable to read PDF");
 }
 
+async function extractTextForGrading(pdfBuffer, sourceLabel) {
+    try {
+        const extractedText = await extractTextFromPdfBuffer(pdfBuffer, { sourceLabel });
+        const trimmedText = trimOcrTextForPrompt(extractedText);
+        if (!trimmedText.trim()) {
+            throw new Error("No OCR text extracted");
+        }
+        return trimmedText;
+    } catch (err) {
+        throw new Error(`Vision OCR failed for ${sourceLabel}: ${err.message}`);
+    }
+}
+
+function isOcrConfigError(errorMessage) {
+    if (typeof errorMessage !== "string") {
+        return false;
+    }
+    return (
+        errorMessage.includes("GCP_OCR_BUCKET is required for Vision PDF OCR") ||
+        errorMessage.includes("GCP_OCR_BUCKET is not configured")
+    );
+}
+
 exports.submitAssignment = async(req, res) => {
     try {
         const { assignmentId } = req.body;
@@ -365,10 +403,25 @@ exports.submitAssignment = async(req, res) => {
         }
 
 
-const prompt = `
+        let studentText = "";
+        let modelText = "";
+        let useOcrText = true;
+        try {
+            studentText = await extractTextForGrading(studentPdf, "student submission");
+            modelText = await extractTextForGrading(modelPdf, "model answer");
+        } catch (ocrErr) {
+            if (isOcrConfigError(ocrErr.message)) {
+                useOcrText = false;
+                console.warn(`OCR disabled for this request: ${ocrErr.message}`);
+            } else {
+                throw ocrErr;
+            }
+        }
+
+        const prompt = `
 You are a strict academic examiner.
 
-Compare the STUDENT PDF with the MODEL ANSWER PDF.
+Compare STUDENT_TEXT with MODEL_TEXT.
 
 The MODEL ANSWER is the ONLY source of truth.
 
@@ -481,21 +534,27 @@ totalGrade = studentMarks
 Return ONLY pure JSON.
 `;
 
-        const payload = buildDeterministicPayload([
-            { text: prompt },
-            {
-                inlineData: {
-                    mimeType: studentMimeType,
-                    data: studentPdf.toString("base64"),
+        const payload = useOcrText ?
+            buildDeterministicPayload([
+                { text: prompt },
+                { text: `MODEL_TEXT:\n${modelText}` },
+                { text: `STUDENT_TEXT:\n${studentText}` },
+            ]) :
+            buildDeterministicPayload([
+                { text: prompt },
+                {
+                    inlineData: {
+                        mimeType: studentMimeType,
+                        data: studentPdf.toString("base64"),
+                    },
                 },
-            },
-            {
-                inlineData: {
-                    mimeType: "application/pdf",
-                    data: modelPdf.toString("base64"),
+                {
+                    inlineData: {
+                        mimeType: "application/pdf",
+                        data: modelPdf.toString("base64"),
+                    },
                 },
-            },
-        ]);
+            ]);
 
         let aiText = await callGemini(payload);
 
@@ -631,6 +690,23 @@ Return ONLY pure JSON.
     }
 };
 
+exports.getOcrHealth = async(req, res) => {
+    try {
+        const health = await checkVisionOcrHealth();
+        return res.json({
+            ok: true,
+            service: "google-cloud-vision-ocr",
+            ...health,
+        });
+    } catch (err) {
+        return res.status(500).json({
+            ok: false,
+            service: "google-cloud-vision-ocr",
+            message: err.message,
+        });
+    }
+};
+
 // Submit on behalf (teacher/assistant)
 exports.submitAssignmentOnBehalf = async(req, res) => {
     try {
@@ -744,10 +820,25 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             });
         }
 
+        let studentText = "";
+        let modelText = "";
+        let useOcrText = true;
+        try {
+            studentText = await extractTextForGrading(studentPdf, "student submission");
+            modelText = await extractTextForGrading(modelPdf, "model answer");
+        } catch (ocrErr) {
+            if (isOcrConfigError(ocrErr.message)) {
+                useOcrText = false;
+                console.warn(`OCR disabled for this request: ${ocrErr.message}`);
+            } else {
+                throw ocrErr;
+            }
+        }
+
         const prompt = `
 You are a strict university professor.
 
-Compare the STUDENT PDF and MODEL ANSWER PDF.
+Compare STUDENT_TEXT and MODEL_TEXT.
 Ignore page cleanliness, handwriting quality, crossings-out, or any visual mess; grade only the written content.
 
 GRADING RULES:
@@ -820,21 +911,27 @@ DO NOT return markdown.
 ONLY return pure JSON.
 `;
 
-        const payload = buildDeterministicPayload([
-            { text: prompt },
-            {
-                inlineData: {
-                    mimeType: studentMimeType,
-                    data: studentPdf.toString("base64"),
+        const payload = useOcrText ?
+            buildDeterministicPayload([
+                { text: prompt },
+                { text: `MODEL_TEXT:\n${modelText}` },
+                { text: `STUDENT_TEXT:\n${studentText}` },
+            ]) :
+            buildDeterministicPayload([
+                { text: prompt },
+                {
+                    inlineData: {
+                        mimeType: studentMimeType,
+                        data: studentPdf.toString("base64"),
+                    },
                 },
-            },
-            {
-                inlineData: {
-                    mimeType: "application/pdf",
-                    data: modelPdf.toString("base64"),
+                {
+                    inlineData: {
+                        mimeType: "application/pdf",
+                        data: modelPdf.toString("base64"),
+                    },
                 },
-            },
-        ]);
+            ]);
 
         let aiText = await callGemini(payload);
         const cleaned = aiText.replace(/```json/gi, "").replace(/```/g, "").trim();
