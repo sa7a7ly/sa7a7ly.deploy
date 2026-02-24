@@ -39,6 +39,11 @@ const assignmentSchema = new mongoose.Schema(
       enum: ['IMMEDIATE', 'AFTER_DEADLINE', 'AFTER_REVIEW'],
       default: 'IMMEDIATE',
     },
+    gradingProfile: {
+      type: String,
+      enum: ['GENERAL', 'ARABIC_ESSAY'],
+      default: 'GENERAL',
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

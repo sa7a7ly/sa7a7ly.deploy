@@ -9,6 +9,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     pdf: null,
     dueDate: '',
     resultVisibility: 'IMMEDIATE',
+    gradingProfile: 'GENERAL',
   });
   const [loading, setLoading] = useState(false);
   const { t } = useI18n();
@@ -42,6 +43,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
       formDataToSend.append('dueDate', formData.dueDate);
     }
     formDataToSend.append('resultVisibility', formData.resultVisibility);
+    formDataToSend.append('gradingProfile', formData.gradingProfile);
     if (formData.pdf) {
       formDataToSend.append('pdf', formData.pdf);
     }
@@ -160,6 +162,28 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
             </select>
             <p className="mt-2 text-sm text-slate-500">
               {t('createAssignment.resultVisibilityHelp')}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">
+              {t('createAssignment.gradingProfile')}
+            </label>
+            <select
+              name="gradingProfile"
+              value={formData.gradingProfile}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="GENERAL">
+                {t('createAssignment.gradingGeneral')}
+              </option>
+              <option value="ARABIC_ESSAY">
+                {t('createAssignment.gradingArabicEssay')}
+              </option>
+            </select>
+            <p className="mt-2 text-sm text-slate-500">
+              {t('createAssignment.gradingProfileHelp')}
             </p>
           </div>
 

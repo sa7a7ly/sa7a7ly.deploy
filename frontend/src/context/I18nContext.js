@@ -165,6 +165,11 @@ const translations = {
       visibilityAfterReview: 'Show after teacher/assistant review',
       resultVisibilityHelp:
         'Choose when students can view grades and feedback for this assignment.',
+      gradingProfile: 'Grading Type',
+      gradingGeneral: 'General Subjects',
+      gradingArabicEssay: 'Arabic Essay',
+      gradingProfileHelp:
+        'Choose the grading logic used for this assignment.',
     },
     createClassroom: {
       title: 'Create Classroom',
@@ -365,6 +370,11 @@ const translations = {
       visibilityAfterReview: 'تظهر بعد مراجعة المدرس أو المساعد',
       resultVisibilityHelp:
         'اختار وقت ظهور الدرجة والملاحظات للطالب في هذا التكليف.',
+      gradingProfile: 'نوع التصحيح',
+      gradingGeneral: 'مواد عامة',
+      gradingArabicEssay: 'مقال عربي',
+      gradingProfileHelp:
+        'اختار منطق التصحيح المستخدم لهذا التكليف.',
     },
     createClassroom: {
       title: 'إنشاء فصل',

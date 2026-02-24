@@ -11,7 +11,6 @@ router.use(authenticateToken);
 router.post('/', uploadSubmission.single('pdf'), subscriptionGuard, submissionController.submitAssignment);
 router.post('/on-behalf', uploadSubmission.single('pdf'), subscriptionGuard, submissionController.submitAssignmentOnBehalf);
 router.post('/mark-reviewed', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.markSubmissionsReviewed);
-router.get('/ocr/health', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.getOcrHealth);
 router.get('/', submissionController.getSubmissions);
 router.get('/by-student', submissionController.getStudentSubmission);
 router.get('/:id/pdf', submissionController.getSubmissionPdf);

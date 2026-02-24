@@ -13,6 +13,10 @@ const RESULT_VISIBILITY = {
   AFTER_DEADLINE: 'AFTER_DEADLINE',
   AFTER_REVIEW: 'AFTER_REVIEW',
 };
+const GRADING_PROFILE = {
+  GENERAL: 'GENERAL',
+  ARABIC_ESSAY: 'ARABIC_ESSAY',
+};
 
 function normalizeResultVisibility(value) {
   if (!value) return RESULT_VISIBILITY.IMMEDIATE;
@@ -23,6 +27,16 @@ function normalizeResultVisibility(value) {
     normalized === RESULT_VISIBILITY.AFTER_REVIEW
   ) {
     return normalized;
+  }
+  return null;
+}
+
+function normalizeGradingProfile(value) {
+  if (!value) return GRADING_PROFILE.GENERAL;
+  const normalized = String(value).trim().toUpperCase();
+  if (normalized === GRADING_PROFILE.GENERAL) return GRADING_PROFILE.GENERAL;
+  if (normalized === GRADING_PROFILE.ARABIC_ESSAY || normalized === 'ARABIC') {
+    return GRADING_PROFILE.ARABIC_ESSAY;
   }
   return null;
 }
@@ -94,6 +108,10 @@ exports.createAssignment = async (req, res) => {
         message: 'A valid due date is required when result visibility is set to after deadline',
       });
     }
+    const gradingProfile = normalizeGradingProfile(req.body.gradingProfile);
+    if (!gradingProfile) {
+      return res.status(400).json({ message: 'Invalid grading profile' });
+    }
 
     const assignment = await Assignment.create({
       classroomId: req.body.classroomId,
@@ -104,6 +122,7 @@ exports.createAssignment = async (req, res) => {
       totalPoints: req.body.totalPoints || 100,
       dueDate: normalizedDueDate,
       resultVisibility,
+      gradingProfile,
       createdBy: creator._id,
     });
 
@@ -178,10 +197,18 @@ exports.updateAssignment = async (req, res) => {
         message: 'A valid due date is required when result visibility is set to after deadline',
       });
     }
+    const hasProfileInput = Object.prototype.hasOwnProperty.call(req.body, 'gradingProfile');
+    const nextGradingProfile = hasProfileInput
+      ? normalizeGradingProfile(req.body.gradingProfile)
+      : existingAssignment.gradingProfile || GRADING_PROFILE.GENERAL;
+    if (!nextGradingProfile) {
+      return res.status(400).json({ message: 'Invalid grading profile' });
+    }
 
     const updatePayload = {
       ...req.body,
       resultVisibility: nextVisibility,
+      gradingProfile: nextGradingProfile,
     };
     if (hasDueDateInput) {
       updatePayload.dueDate = normalizedNextDueDate;
