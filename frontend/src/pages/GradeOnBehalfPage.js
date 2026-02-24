@@ -10,19 +10,24 @@ import {
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import logo from '../images/image.png';
-import pdfLogo from '../images/ms_Eman_logo.jpeg';
+import arabicEssayPdfLogo from '../images/ms_Eman_logo.jpeg';
 
-const loadImageAsDataUrl = (src) =>
+const loadImageForPdf = (src) =>
   new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+      resolve({
+        dataUrl: canvas.toDataURL('image/png'),
+        format: 'PNG',
+        width: img.width,
+        height: img.height,
+      });
     };
     img.onerror = reject;
     img.src = src;
@@ -51,6 +56,11 @@ const GradeOnBehalfPage = () => {
     assignmentId: '',
     pdf: null,
   });
+
+  const getPdfLogoByProfile = (gradingProfile) =>
+    String(gradingProfile || '').toUpperCase() === 'ARABIC_ESSAY'
+      ? arabicEssayPdfLogo
+      : logo;
 
   useEffect(() => {
     const load = async () => {
@@ -171,7 +181,13 @@ const GradeOnBehalfPage = () => {
     }
   };
 
-  const buildFeedbackPdf = async ({ student, assignmentTitle, grade, feedback }) => {
+  const buildFeedbackPdf = async ({
+    student,
+    assignmentTitle,
+    grade,
+    feedback,
+    gradingProfile,
+  }) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -184,8 +200,29 @@ const GradeOnBehalfPage = () => {
     doc.line(0, 38, pageWidth, 38);
 
     try {
-      const logoDataUrl = await loadImageAsDataUrl(pdfLogo);
-      doc.addImage(logoDataUrl, 'PNG', margin, 8, 24, 24);
+      const selectedPdfLogo = getPdfLogoByProfile(gradingProfile);
+      const logoAsset = await loadImageForPdf(selectedPdfLogo);
+      const maxLogoWidth = 22;
+      const maxLogoHeight = 18;
+      const ratio =
+        logoAsset.width && logoAsset.height
+          ? logoAsset.width / logoAsset.height
+          : 1;
+      let drawWidth = maxLogoWidth;
+      let drawHeight = drawWidth / ratio;
+      if (drawHeight > maxLogoHeight) {
+        drawHeight = maxLogoHeight;
+        drawWidth = drawHeight * ratio;
+      }
+      const drawY = 8 + (24 - drawHeight) / 2;
+      doc.addImage(
+        logoAsset.dataUrl,
+        logoAsset.format,
+        margin,
+        drawY,
+        drawWidth,
+        drawHeight
+      );
     } catch (_) {
       // If logo fails, continue without it.
     }
@@ -344,8 +381,15 @@ const GradeOnBehalfPage = () => {
     assignmentTitle,
     grade,
     feedback,
+    gradingProfile,
   }) => {
-    const doc = await buildFeedbackPdf({ student, assignmentTitle, grade, feedback });
+    const doc = await buildFeedbackPdf({
+      student,
+      assignmentTitle,
+      grade,
+      feedback,
+      gradingProfile,
+    });
     const safeTitle = (assignmentTitle || 'assignment')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -462,6 +506,9 @@ const GradeOnBehalfPage = () => {
                   assignmentTitle: feedbackMeta.assignmentTitle,
                   grade: result.grade,
                   feedback: result.feedback,
+                  gradingProfile:
+                    assignments.find((a) => a._id === formData.assignmentId)
+                      ?.gradingProfile || 'GENERAL',
                 })
               }
               className="mt-1 inline-block text-sm font-semibold text-emerald-700 hover:text-emerald-800"
@@ -514,6 +561,14 @@ const GradeOnBehalfPage = () => {
                             submission.assignmentId?.title,
                           grade: submission.grade,
                           feedback: submission.feedback,
+                          gradingProfile:
+                            assignments.find(
+                              (a) =>
+                                a._id ===
+                                (typeof submission.assignmentId === 'string'
+                                  ? submission.assignmentId
+                                  : submission.assignmentId?._id)
+                            )?.gradingProfile || 'GENERAL',
                         })
                       }
                       className="mt-1 inline-flex w-fit items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
