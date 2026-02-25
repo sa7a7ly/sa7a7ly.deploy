@@ -16,6 +16,17 @@ const RESULT_VISIBILITY = {
 
 const PDF_DOWNLOAD_TIMEOUT_MS = 20000;
 const PDF_DOWNLOAD_RETRIES = 2;
+
+function serializeError(err) {
+    return {
+        name: err?.name,
+        message: err?.message,
+        code: err?.code,
+        status: err?.response?.status || err?.status || null,
+        responseData: err?.response?.data || null,
+        stack: err?.stack || null,
+    };
+}
 function getStudentMimeType(file) {
     if (file && file.mimetype) {
         return file.mimetype;
@@ -318,12 +329,7 @@ exports.submitAssignment = async(req, res) => {
             resubmissionRequest: latestRequest || null,
         });
     } catch (err) {
-        console.error(
-            "SUBMISSION ERROR:",
-            err && err.response && err.response.data ?
-            err.response.data :
-            err
-        );
+        console.error("SUBMISSION ERROR [submitAssignment]:", serializeError(err));
 
         return res.status(500).json({
             message: err &&
@@ -445,7 +451,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             resubmissionRequest: latestRequest || null,
         });
     } catch (err) {
-        console.error("SUBMISSION ERROR:", err);
+        console.error("SUBMISSION ERROR [submitAssignmentOnBehalf]:", serializeError(err));
         res.status(500).json({ message: err.message });
     }
 };
@@ -545,6 +551,7 @@ exports.getStudentSubmission = async(req, res) => {
             resubmissionRequest: resubmissionRequest || null,
         });
     } catch (err) {
+        console.error("SUBMISSION ERROR [getStudentSubmission]:", serializeError(err));
         res.status(500).json({ message: err.message });
     }
 };
@@ -606,6 +613,7 @@ exports.markSubmissionsReviewed = async(req, res) => {
             modifiedCount: updateResult.modifiedCount || 0,
         });
     } catch (err) {
+        console.error("SUBMISSION ERROR [markSubmissionsReviewed]:", serializeError(err));
         return res.status(500).json({ message: err.message });
     }
 };
@@ -677,6 +685,7 @@ exports.updateSubmissionReview = async(req, res) => {
             visibilityPolicy: payload.visibilityPolicy,
         });
     } catch (err) {
+        console.error("SUBMISSION ERROR [updateSubmissionReview]:", serializeError(err));
         return res.status(500).json({ message: err.message });
     }
 };
@@ -721,6 +730,7 @@ exports.getSubmissionPdf = async(req, res) => {
         res.setHeader("Content-Disposition", `inline; filename="submission-${submission._id}.pdf"`);
         return res.send(pdfBuffer);
     } catch (err) {
+        console.error("SUBMISSION ERROR [getSubmissionPdf]:", serializeError(err));
         return res.status(500).json({ message: err.message });
     }
 };
