@@ -65,6 +65,10 @@ const submissionSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+    status: {
+      type: String,
+      default: "QUEUED"
+    },
   },
   {
     timestamps: { createdAt: 'submittedAt', updatedAt: false },

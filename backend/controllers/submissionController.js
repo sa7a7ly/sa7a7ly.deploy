@@ -9,6 +9,7 @@ const User = require("../models/User");
 const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
 const { getGradingStrategy } = require("../services/grading/getStrategy");
 const { gradeWithStrategy } = require("../services/grading/engine");
+const gradingQueue = require("../queues/gradingQueue");
 
 const RESULT_VISIBILITY = {
     IMMEDIATE: "IMMEDIATE",
@@ -286,86 +287,33 @@ exports.submitAssignment = async(req, res) => {
             });
         }
 
-        const studentPdf = req.file.buffer;
-        const studentMimeType = getStudentMimeType(req.file);
         const studentUploadFormat = getStudentUploadFormat(req.file);
-        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
-
-        // 🔒 Identical file check
-        const studentHash = crypto
-            .createHash("sha256")
-            .update(studentPdf)
-            .digest("hex");
-        const modelHash = crypto
-            .createHash("sha256")
-            .update(modelPdf)
-            .digest("hex");
-
-        if (studentHash === modelHash) {
-            const uploadedSubmission = await uploadPdfBuffer(
-                req.file.buffer,
-                "sa7a7ly/submissions",
-                studentUploadFormat
-            );
-            const submission = await Submission.create({
-                assignmentId,
-                studentId,
-                pdfPath: uploadedSubmission.secure_url,
-                grade: assignment.totalPoints,
-                feedback: "Identical to model answer. Full marks awarded.",
-                submittedBy: studentId,
-                submittedByRole: "STUDENT",
-                gradedAt: new Date(),
-            });
-
-            if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
-                latestRequest.used = true;
-                latestRequest.usedAt = new Date();
-                await latestRequest.save();
-            }
-            const responsePayload = buildSubmissionResponse(submission, assignment, req.user?.role);
-
-            return res.status(201).json({
-                submission: responsePayload.submission,
-                resultVisible: responsePayload.resultVisible,
-                visibilityPolicy: responsePayload.visibilityPolicy,
-                alreadySubmitted: false,
-                resubmissionRequest: latestRequest || null,
-            });
-        }
-        const strategy = getGradingStrategy(assignment);
-        const grading = await gradeWithStrategy({
-            strategy,
-            assignment,
-            studentPdf,
-            studentMimeType,
-            modelPdf,
-        });
-
-        const { result, feedbackText } = grading;
         const uploadedSubmission = await uploadPdfBuffer(
             req.file.buffer,
             "sa7a7ly/submissions",
             studentUploadFormat
         );
+
         const submission = await Submission.create({
             assignmentId,
             studentId,
             pdfPath: uploadedSubmission.secure_url,
-            grade: result.totalGrade,
-            feedback: feedbackText.trim(),
             submittedBy: studentId,
             submittedByRole: "STUDENT",
-            gradedAt: new Date(),
+            status: "QUEUED",
         });
+
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
             latestRequest.used = true;
             latestRequest.usedAt = new Date();
             await latestRequest.save();
         }
+
+        await gradingQueue.add("grade", { submissionId: submission._id.toString() });
+
         const responsePayload = buildSubmissionResponse(submission, assignment, req.user?.role);
 
-        res.status(201).json({
+        return res.status(201).json({
             submission: responsePayload.submission,
             resultVisible: responsePayload.resultVisible,
             visibilityPolicy: responsePayload.visibilityPolicy,
@@ -380,7 +328,7 @@ exports.submitAssignment = async(req, res) => {
             err
         );
 
-        res.status(500).json({
+        return res.status(500).json({
             message: err &&
                 err.response &&
                 err.response.data &&
@@ -826,3 +774,4 @@ exports.getSubmissionPdf = async(req, res) => {
         return res.status(500).json({ message: err.message });
     }
 };
+

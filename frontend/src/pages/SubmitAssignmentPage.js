@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   submitAssignment,
   getAssignmentById,
   getStudentSubmission,
+  getSubmissionById,
   createResubmissionRequest,
 } from '../services/api';
 import { jsPDF } from 'jspdf';
@@ -169,9 +170,10 @@ const parseFeedbackSections = (feedbackText) => {
 const SubmitAssignmentPage = () => {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [pdf, setPdf] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [assignment, setAssignment] = useState(null);
@@ -181,6 +183,8 @@ const SubmitAssignmentPage = () => {
   const [resubmitReason, setResubmitReason] = useState('');
   const [requestingResubmit, setRequestingResubmit] = useState(false);
   const [existingSubmission, setExistingSubmission] = useState(null);
+  const [activeSubmissionId, setActiveSubmissionId] = useState(null);
+  const [submissionStatus, setSubmissionStatus] = useState(null);
   const [resultVisible, setResultVisible] = useState(true);
   const [visibilityPolicy, setVisibilityPolicy] = useState('IMMEDIATE');
   const [infoMessage, setInfoMessage] = useState('');
@@ -240,23 +244,26 @@ const SubmitAssignmentPage = () => {
         const isResultVisible = response.data?.resultVisible !== false;
         const nextPolicy = response.data?.visibilityPolicy || 'IMMEDIATE';
         const latestRequest = response.data?.resubmissionRequest || null;
+        const status = submission?.status || null;
         setExistingSubmission(submission);
+        setActiveSubmissionId(submission?._id || null);
+        setSubmissionStatus(status);
         setResultVisible(isResultVisible);
         setVisibilityPolicy(nextPolicy);
         setResubmissionRequest(latestRequest);
 
-        if (
-          submission &&
-          isResultVisible &&
-          (!latestRequest ||
-            latestRequest.status !== 'APPROVED' ||
-            latestRequest.used)
-        ) {
+        if (submission && status === 'DONE' && isResultVisible) {
           setResult(submission);
           setInfoMessage(t('submit.resultTitle'));
-        } else if (submission && !isResultVisible) {
+        } else if (submission && status === 'DONE' && !isResultVisible) {
           setResult(null);
           setInfoMessage(getHiddenResultMessage(nextPolicy));
+        } else if (submission && (status === 'QUEUED' || status === 'GRADING')) {
+          setResult(null);
+          setInfoMessage('');
+        } else if (submission && status === 'FAILED') {
+          setResult(null);
+          setInfoMessage('');
         }
       } catch (_) {
         // Ignore if no submission found.
@@ -274,6 +281,74 @@ const SubmitAssignmentPage = () => {
       isMounted = false;
     };
   }, [assignmentId, user?._id, t]);
+
+  useEffect(() => {
+    const querySubmissionId = new URLSearchParams(location.search).get('submissionId');
+    if (querySubmissionId) {
+      setActiveSubmissionId(querySubmissionId);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!activeSubmissionId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let intervalId = null;
+
+    const pullSubmission = async () => {
+      try {
+        const response = await getSubmissionById(activeSubmissionId);
+        if (cancelled) {
+          return;
+        }
+
+        const payload = response.data || {};
+        const status = payload.status || null;
+        const isVisible = payload.resultVisible !== false;
+        const policy = payload.visibilityPolicy || 'IMMEDIATE';
+
+        setExistingSubmission(payload);
+        setSubmissionStatus(status);
+        setResultVisible(isVisible);
+        setVisibilityPolicy(policy);
+
+        if (status === 'DONE') {
+          if (isVisible) {
+            setResult(payload);
+          } else {
+            setResult(null);
+          }
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          return;
+        }
+
+        if (status === 'FAILED') {
+          setResult(null);
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+        }
+      } catch (_) {
+        // Keep polling silently.
+      }
+    };
+
+    pullSubmission();
+    intervalId = setInterval(pullSubmission, 5000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [activeSubmissionId]);
 
   useEffect(() => {
     if (!loading) {
@@ -379,7 +454,6 @@ const SubmitAssignmentPage = () => {
       return;
     }
 
-    setLoading(true);
     setError('');
 
     try {
@@ -390,27 +464,20 @@ const SubmitAssignmentPage = () => {
 
       const response = await submitAssignment(formData);
       const payload = response.data?.submission ? response.data : { submission: response.data };
-      const isResultVisible = payload.resultVisible !== false;
-      const nextPolicy = payload.visibilityPolicy || 'IMMEDIATE';
-      setResultVisible(isResultVisible);
-      setVisibilityPolicy(nextPolicy);
-      if (payload.alreadySubmitted) {
-        setInfoMessage(
-          isResultVisible ? t('submit.resultTitle') : getHiddenResultMessage(nextPolicy)
-        );
-      } else if (!isResultVisible) {
-        setInfoMessage(getHiddenResultMessage(nextPolicy));
-      } else {
-        setInfoMessage('');
-      }
-      setResult(isResultVisible ? payload.submission : null);
+      const submission = payload.submission || null;
+      const nextId = submission?._id || null;
+      setInfoMessage('Saved successfully.');
+      setResult(null);
       setResubmissionRequest(payload.resubmissionRequest || null);
-      setExistingSubmission(payload.submission);
+      setExistingSubmission(submission);
+      setSubmissionStatus(submission?.status || 'QUEUED');
+      setActiveSubmissionId(nextId);
       setPdf(null);
+      if (nextId) {
+        navigate(`/submit-assignment/${assignmentId}?submissionId=${nextId}`, { replace: true });
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -427,6 +494,13 @@ const SubmitAssignmentPage = () => {
     !isPastDue &&
     (!existingSubmission ||
       (resubmissionRequest?.status === 'APPROVED' && !resubmissionRequest.used));
+  const normalizedStatus = submissionStatus || existingSubmission?.status || null;
+  const isBeingGraded = normalizedStatus === 'QUEUED' || normalizedStatus === 'GRADING';
+  const isFailed = normalizedStatus === 'FAILED';
+  const doneButHidden =
+    normalizedStatus === 'DONE' &&
+    existingSubmission &&
+    resultVisible === false;
   const waitingForReview =
     existingSubmission && !resultVisible && visibilityPolicy === 'AFTER_REVIEW';
 
@@ -1008,6 +1082,127 @@ const SubmitAssignmentPage = () => {
       </div>
     </div>
   ) : null;
+
+  if (isBeingGraded) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <nav className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate(-1)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ← {t('common.back')}
+              </button>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                  Sa7a7ly
+                </p>
+                <h1 className="text-2xl font-bold text-slate-900">{t('submit.submitTitle')}</h1>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+            >
+              {t('common.logout')}
+            </button>
+          </div>
+        </nav>
+
+        <div className="flex min-h-[70vh] items-center justify-center px-4">
+          <div className="text-center">
+            {infoMessage && (
+              <p className="mb-4 text-sm font-semibold text-emerald-700">{infoMessage}</p>
+            )}
+            <p className="text-3xl font-bold text-slate-900">Being graded...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFailed) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <nav className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate(-1)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ← {t('common.back')}
+              </button>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                  Sa7a7ly
+                </p>
+                <h1 className="text-2xl font-bold text-slate-900">{t('submit.submitTitle')}</h1>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+            >
+              {t('common.logout')}
+            </button>
+          </div>
+        </nav>
+
+        <div className="flex min-h-[70vh] items-center justify-center px-4">
+          <p className="text-center text-2xl font-semibold text-red-700">
+            Grading failed. Please contact support.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (doneButHidden) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <nav className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate(-1)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                ← {t('common.back')}
+              </button>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                  Sa7a7ly
+                </p>
+                <h1 className="text-2xl font-bold text-slate-900">{t('submit.resultTitle')}</h1>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition"
+            >
+              {t('common.logout')}
+            </button>
+          </div>
+        </nav>
+
+        <div className="flex min-h-[70vh] items-center justify-center px-4">
+          <div className="max-w-2xl text-center">
+            <p className="text-2xl font-semibold text-slate-900">
+              Your submission is graded but results are not visible yet.
+            </p>
+            <p className="mt-3 text-slate-600">
+              {visibilityPolicy === 'AFTER_REVIEW'
+                ? 'Results will appear after teacher review.'
+                : 'Results will appear after deadline.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (result) {
     return (

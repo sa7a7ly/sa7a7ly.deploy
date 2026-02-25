@@ -117,6 +117,9 @@ export const updateSubmission = (submissionId, data) =>
 export const getSubmissionPdf = (submissionId) =>
   API.get(`/submissions/${submissionId}/pdf`, { responseType: 'blob' });
 
+export const getSubmissionById = (submissionId) =>
+  API.get(`/submissions/${submissionId}`);
+
 export const markSubmissionsReviewed = (data) =>
   API.post('/submissions/mark-reviewed', data);
 
