@@ -9,19 +9,84 @@ const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
   const { t } = useI18n();
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateForm = () => {
+    const nextErrors = {};
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      nextErrors.email = t('authErrors.emailRequired');
+    } else if (!emailRegex.test(trimmedEmail)) {
+      nextErrors.email = t('authErrors.emailInvalid');
+    }
+
+    if (!password) {
+      nextErrors.password = t('authErrors.passwordRequired');
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const mapLoginError = (err) => {
+    if (!err?.response) {
+      return t('authErrors.network');
+    }
+
+    const status = err.response.status;
+    const serverMessage = err.response?.data?.message;
+    const serverErrors = err.response?.data?.errors;
+
+    if (Array.isArray(serverErrors) && serverErrors.length > 0) {
+      const firstMessage = serverErrors[0]?.msg || serverErrors[0]?.message;
+      if (firstMessage) {
+        return firstMessage;
+      }
+    }
+
+    if (typeof serverMessage === 'string' && serverMessage.trim()) {
+      return serverMessage;
+    }
+
+    if (status === 400 || status === 401) {
+      return t('authErrors.invalidCredentials');
+    }
+    if (status === 403) {
+      return t('authErrors.loginForbidden');
+    }
+    if (status === 429) {
+      return t('authErrors.tooManyAttempts');
+    }
+    if (status >= 500) {
+      return t('authErrors.server');
+    }
+
+    return t('authErrors.loginFailed');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) {
+      return;
+    }
+
     setError('');
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await loginUser({
-        email,
+        email: email.trim(),
         password,
       });
 
@@ -39,7 +104,7 @@ const LoginPage = () => {
       }
 
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      setError(mapLoginError(err));
     } finally {
       setLoading(false);
     }
@@ -109,11 +174,24 @@ const LoginPage = () => {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, email: '' }));
+                if (error) setError('');
+              }}
               required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoComplete="email"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                fieldErrors.email
+                  ? 'border-red-300 focus:ring-red-500'
+                  : 'border-slate-300 focus:ring-emerald-500'
+              }`}
               placeholder="your@email.com"
+              aria-invalid={Boolean(fieldErrors.email)}
             />
+            {fieldErrors.email && (
+              <p className="mt-2 text-sm text-red-600">{fieldErrors.email}</p>
+            )}
           </div>
 
           <div>
@@ -123,11 +201,24 @@ const LoginPage = () => {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, password: '' }));
+                if (error) setError('');
+              }}
               required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoComplete="current-password"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                fieldErrors.password
+                  ? 'border-red-300 focus:ring-red-500'
+                  : 'border-slate-300 focus:ring-emerald-500'
+              }`}
               placeholder="••••••••"
+              aria-invalid={Boolean(fieldErrors.password)}
             />
+            {fieldErrors.password && (
+              <p className="mt-2 text-sm text-red-600">{fieldErrors.password}</p>
+            )}
           </div>
 
           <button

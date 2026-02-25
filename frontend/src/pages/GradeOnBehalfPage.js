@@ -51,6 +51,7 @@ const GradeOnBehalfPage = () => {
   const [feedbackMeta, setFeedbackMeta] = useState({
     studentName: '',
     assignmentTitle: '',
+    assignmentId: '',
   });
   const [formData, setFormData] = useState({
     assignmentId: '',
@@ -90,8 +91,8 @@ const GradeOnBehalfPage = () => {
                   ? s.assignmentId
                   : s.assignmentId?._id
               ) ||
-              'Assignment',
-            studentDisplayName: s.studentName || s.studentId?.name || 'Student',
+              t('gradeOnBehalf.assignmentFallback'),
+            studentDisplayName: s.studentName || s.studentId?.name || t('gradeOnBehalf.studentFallback'),
           }))
           .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
@@ -139,7 +140,7 @@ const GradeOnBehalfPage = () => {
       setSubmitting(true);
       setError('');
       setResult(null);
-      setFeedbackMeta({ studentName: '', assignmentTitle: '' });
+      setFeedbackMeta({ studentName: '', assignmentTitle: '', assignmentId: '' });
 
       const payload = new FormData();
       payload.append('assignmentId', formData.assignmentId);
@@ -153,11 +154,12 @@ const GradeOnBehalfPage = () => {
 
       const assignmentTitle =
         assignments.find((a) => a._id === formData.assignmentId)?.title ||
-        'Assignment';
+        t('gradeOnBehalf.assignmentFallback');
       const normalizedStudentName = studentName.trim();
       setFeedbackMeta({
         studentName: normalizedStudentName,
         assignmentTitle,
+        assignmentId: formData.assignmentId,
       });
 
       if (createdSubmission) {
@@ -166,7 +168,7 @@ const GradeOnBehalfPage = () => {
             ...createdSubmission,
             assignmentTitle,
             studentDisplayName:
-              normalizedStudentName || createdSubmission.studentName || 'Student',
+              normalizedStudentName || createdSubmission.studentName || t('gradeOnBehalf.studentFallback'),
           },
           ...prev,
         ]);
@@ -431,61 +433,104 @@ const GradeOnBehalfPage = () => {
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm">
-          <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-emerald-200/40 blur-2xl" />
-          <div className="absolute -left-12 -bottom-12 h-40 w-40 rounded-full bg-sky-200/40 blur-2xl" />
-          <div className="relative flex items-center gap-4">
+      <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-6 shadow-sm sm:p-8">
+          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-200/40 blur-2xl" />
+          <div className="absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-sky-200/40 blur-2xl" />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
             <img
               src={logo}
               alt="Sa7a7ly logo"
-              className="h-11 w-11 rounded-xl bg-white p-2 shadow"
+              className="h-12 w-12 rounded-xl bg-white p-2 shadow"
             />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
                 {classroom?.name || t('common.classroom')}
               </p>
-              <h2 className="text-3xl font-bold text-slate-900">
+                <h2 className="text-3xl font-bold text-slate-900">
                 {t('common.gradeOnBehalf')}
               </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {t('gradeOnBehalf.heroBody')}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  {t('common.assignments')}
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">{assignments.length}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  {t('gradeOnBehalf.savedFeedbacks')}
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">{savedFeedbacks.length}</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <p className="mt-1 text-sm text-slate-600">{t('common.uploadPdf')}</p>
-          <form onSubmit={handleSubmit} className="mt-4 grid gap-3 md:grid-cols-4">
-            <input
-              type="text"
-              value={studentName}
-              onChange={(e) => setStudentName(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              placeholder={t('common.selectStudent')}
-            />
-            <select
-              value={formData.assignmentId}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, assignmentId: e.target.value }))
-              }
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            >
-              <option value="">{t('common.selectAssignment')}</option>
-              {assignments.map((assignment) => (
-                <option key={assignment._id} value={assignment._id}>
-                  {assignment.title}
-                </option>
-              ))}
-            </select>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleFileChange}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                {t('gradeOnBehalf.submissionForm')}
+              </p>
+              <h3 className="mt-1 text-xl font-bold text-slate-900">{t('common.uploadPdf')}</h3>
+            </div>
+            <p className="text-sm text-slate-600">{t('gradeOnBehalf.pdfOnly')}</p>
+          </div>
+          <form onSubmit={handleSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                {t('gradeOnBehalf.studentName')}
+              </span>
+              <input
+                type="text"
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                placeholder={t('common.selectStudent')}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                {t('common.assignments')}
+              </span>
+              <select
+                value={formData.assignmentId}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, assignmentId: e.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">{t('common.selectAssignment')}</option>
+                {assignments.map((assignment) => (
+                  <option key={assignment._id} value={assignment._id}>
+                    {assignment.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                {t('gradeOnBehalf.pdfFile')}
+              </span>
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={handleFileChange}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-emerald-700 hover:file:bg-emerald-100"
+              />
+            </label>
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              className="md:col-span-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
             >
               {submitting ? t('common.loading') : t('classroom.submitAssignment')}
             </button>
@@ -493,11 +538,24 @@ const GradeOnBehalfPage = () => {
         </section>
 
         {result && (
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-slate-900">AI Grading Result</h3>
-            <p className="mt-2 text-sm text-slate-700">
-              Grade: <span className="font-semibold">{result.grade}</span>
-            </p>
+          <section className="bg-white rounded-3xl border border-emerald-200 shadow-sm p-6 sm:p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                  {t('gradeOnBehalf.submissionReceived')}
+                </div>
+                <h3 className="mt-3 text-xl font-bold text-slate-900">{t('gradeOnBehalf.aiResult')}</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {t('gradeOnBehalf.processedSuccessfully')}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-right">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                  {t('submit.grade')}
+                </p>
+                <p className="text-2xl font-bold text-emerald-700">{result.grade}</p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() =>
@@ -507,34 +565,37 @@ const GradeOnBehalfPage = () => {
                   grade: result.grade,
                   feedback: result.feedback,
                   gradingProfile:
-                    assignments.find((a) => a._id === formData.assignmentId)
+                    assignments.find((a) => a._id === feedbackMeta.assignmentId)
                       ?.gradingProfile || 'GENERAL',
                 })
               }
-              className="mt-1 inline-block text-sm font-semibold text-emerald-700 hover:text-emerald-800"
+              className="mt-5 inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
             >
               {t('common.downloadPdf')}
             </button>
           </section>
         )}
 
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <h3 className="text-lg font-bold text-slate-900">Saved Feedbacks</h3>
+        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-lg font-bold text-slate-900">{t('gradeOnBehalf.savedFeedbacks')}</h3>
+            <p className="text-sm text-slate-600">{t('gradeOnBehalf.latestSubmissions')}</p>
+          </div>
           {savedFeedbacks.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">
-              No saved grade-on-behalf feedbacks yet.
+            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              {t('gradeOnBehalf.noSavedFeedbacks')}
             </p>
           ) : (
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
               {savedFeedbacks.map((submission) => (
                 <div
                   key={submission._id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4"
                 >
-                  <div className="grid gap-2">
+                  <div className="grid gap-3">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                        Assignment
+                        {t('common.assignments')}
                       </p>
                       <p className="text-sm font-semibold text-slate-900">
                         {submission.assignmentTitle}
@@ -542,10 +603,18 @@ const GradeOnBehalfPage = () => {
                     </div>
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                        Student
+                        {t('gradeOnBehalf.studentName')}
                       </p>
                       <p className="text-sm font-semibold text-slate-900">
                         {submission.studentDisplayName}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                        {t('submit.grade')}
+                      </p>
+                      <p className="text-sm font-semibold text-emerald-700">
+                        {submission.grade ?? t('gradeOnBehalf.notAvailable')}
                       </p>
                     </div>
                     <button

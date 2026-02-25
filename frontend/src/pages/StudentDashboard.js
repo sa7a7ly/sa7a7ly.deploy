@@ -52,7 +52,7 @@ const StudentDashboard = () => {
       }
       setError('');
     } catch (err) {
-      setError('Failed to load classrooms');
+      setError(t('errors.failedLoadClassrooms'));
     } finally {
       setLoading(false);
     }
@@ -72,7 +72,7 @@ const StudentDashboard = () => {
       fetchClassrooms();
     } catch (err) {
       setJoiningError(
-        err.response?.data?.message || 'Failed to join classroom'
+        err.response?.data?.message || t('errors.failedJoinClassroom')
       );
     } finally {
       setJoining(false);
@@ -206,14 +206,14 @@ const StudentDashboard = () => {
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-              Today
+              {t('studentDashboard.today')}
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-900">
-              Upcoming due dates
+              {t('studentDashboard.upcomingDueDates')}
             </h2>
             {upcomingAssignments.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500">
-                No deadlines in the next 7 days.
+                {t('studentDashboard.noUpcomingDeadlines')}
               </p>
             ) : (
               <div className="mt-4 space-y-3">
@@ -233,7 +233,7 @@ const StudentDashboard = () => {
                         {classroom.name || t('common.classroom')}
                       </p>
                       <p className="mt-1 text-xs text-emerald-700">
-                        Due {assignment.due.toLocaleString()}
+                        {t('common.due')} {assignment.due.toLocaleString()}
                       </p>
                     </div>
                   );
@@ -244,10 +244,10 @@ const StudentDashboard = () => {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-              Pending
+              {t('studentDashboard.pending')}
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-900">
-              Assignments to submit
+              {t('studentDashboard.assignmentsToSubmit')}
             </h2>
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
               <p className="text-3xl font-bold text-slate-900">
@@ -255,9 +255,9 @@ const StudentDashboard = () => {
               </p>
               <p className="text-sm text-slate-600">
                 {pendingAssignments.length === 1
-                  ? 'Assignment'
-                  : 'Assignments'}{' '}
-                pending
+                  ? t('studentDashboard.assignmentSingular')
+                  : t('studentDashboard.assignmentPlural')}{' '}
+                {t('studentDashboard.pendingLower')}
               </p>
             </div>
             {pendingAssignments.length > 0 && (
@@ -280,23 +280,23 @@ const StudentDashboard = () => {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-              Progress
+              {t('studentDashboard.progress')}
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-900">
-              Your performance
+              {t('studentDashboard.yourPerformance')}
             </h2>
             <div className="mt-4 grid grid-cols-2 gap-4 text-center">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-2xl font-bold text-slate-900">
                   {averageGrade ?? '--'}
                 </p>
-                <p className="text-xs text-slate-600">Average</p>
+                <p className="text-xs text-slate-600">{t('progress.average')}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-2xl font-bold text-slate-900">
                   {latestGrade ?? '--'}
                 </p>
-                <p className="text-xs text-slate-600">Latest</p>
+                <p className="text-xs text-slate-600">{t('progress.latest')}</p>
               </div>
             </div>
             <button
@@ -317,7 +317,7 @@ const StudentDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-                  Quick Join
+                  {t('studentDashboard.quickJoin')}
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
                   {t('classroom.joinAClassroom')}
@@ -325,11 +325,11 @@ const StudentDashboard = () => {
               </div>
               <div className="hidden md:flex flex-col items-end text-xs text-slate-500">
                 <span>Need a code?</span>
-                <span>Ask your teacher</span>
+                <span>{t('studentDashboard.askTeacher')}</span>
               </div>
             </div>
             <p className="mt-2 text-sm text-slate-600">
-              Enter the class code to access assignments and feedback.
+              {t('studentDashboard.joinHelp')}
             </p>
             <form
               onSubmit={handleJoinClassroom}
@@ -339,7 +339,7 @@ const StudentDashboard = () => {
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="Enter join code"
+                placeholder={t('studentDashboard.enterJoinCode')}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <button
@@ -361,7 +361,7 @@ const StudentDashboard = () => {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-                  My Classes
+                  {t('studentDashboard.myClasses')}
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
                   {t('common.classrooms')}
@@ -385,9 +385,9 @@ const StudentDashboard = () => {
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    {option === 'ALL' && 'All'}
-                    {option === 'ACTIVE' && 'Active'}
-                    {option === 'ARCHIVED' && 'Archived'}
+                    {option === 'ALL' && t('studentDashboard.all')}
+                    {option === 'ACTIVE' && t('studentDashboard.active')}
+                    {option === 'ARCHIVED' && t('studentDashboard.archived')}
                   </button>
                 ))}
               </div>
@@ -395,7 +395,7 @@ const StudentDashboard = () => {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search classes"
+                placeholder={t('studentDashboard.searchClasses')}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>
@@ -421,11 +421,7 @@ const StudentDashboard = () => {
                 {filteredClassrooms.map((classroom) => {
                   const classroomAssignments =
                     assignmentsByClassroom[classroom._id] || [];
-                  const pendingForClass = classroomAssignments.filter(
-                    (a) => !submittedAssignmentIds.has(a._id)
-                  );
-                  const firstPending = pendingForClass[0];
-                  const teacherName = classroom.teacherId?.name || 'Teacher';
+                  const teacherName = classroom.teacherId?.name || t('common.teachers');
                   return (
                   <div
                     key={classroom._id}
@@ -436,11 +432,11 @@ const StudentDashboard = () => {
                         {classroom.name}
                       </h3>
                       <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                        Active
+                        {t('studentDashboard.active')}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">
-                      Assignments, submissions, and updates.
+                      {t('studentDashboard.classCardSubtitle')}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                       <span>{teacherName}</span>
@@ -456,17 +452,6 @@ const StudentDashboard = () => {
                     >
                       {t('classroom.viewClassroom')}
                     </button>
-                    {firstPending && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigate(`/submit-assignment/${firstPending._id}`)
-                        }
-                        className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        Submit assignment
-                      </button>
-                    )}
                   </div>
                 );
                 })}
@@ -478,14 +463,14 @@ const StudentDashboard = () => {
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-              Feedback
+              {t('studentDashboard.feedback')}
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-900">
-              Recent feedback
+              {t('studentDashboard.recentFeedback')}
             </h2>
             {recentFeedback.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500">
-                Submit assignments to receive feedback.
+                {t('studentDashboard.submitToGetFeedback')}
               </p>
             ) : (
               <div className="mt-4 space-y-3">
@@ -495,10 +480,10 @@ const StudentDashboard = () => {
                     className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
                   >
                     <p className="text-sm font-semibold text-slate-900">
-                      {submission.assignmentId?.title || 'Assignment'}
+                      {submission.assignmentId?.title || t('studentDashboard.assignmentSingular')}
                     </p>
                     <p className="text-xs text-slate-500">
-                      Grade: {submission.grade ?? 'N/A'}
+                      {t('submit.grade')}: {submission.grade ?? t('studentDashboard.notAvailable')}
                     </p>
                     <p className="mt-2 text-xs text-slate-600 line-clamp-3">
                       {submission.feedback}
@@ -511,20 +496,20 @@ const StudentDashboard = () => {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-              Help
+              {t('studentDashboard.help')}
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-900">
-              How it works
+              {t('studentDashboard.howItWorks')}
             </h2>
             <div className="mt-4 space-y-3 text-sm text-slate-600">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                1. Join your classroom with the code from your teacher.
+                {t('studentDashboard.step1')}
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                2. Submit your assignment PDF before the deadline.
+                {t('studentDashboard.step2')}
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                3. Review feedback and improve your next submission.
+                {t('studentDashboard.step3')}
               </div>
             </div>
           </div>

@@ -173,7 +173,7 @@ const SubmitAssignmentPage = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [pdf, setPdf] = useState(null);
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [assignment, setAssignment] = useState(null);
@@ -449,12 +449,16 @@ const SubmitAssignmentPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) {
+      return;
+    }
     if (!pdf) {
       setError(t('common.uploadPdf'));
       return;
     }
 
     setError('');
+    setLoading(true);
 
     try {
       const formData = new FormData();
@@ -478,6 +482,8 @@ const SubmitAssignmentPage = () => {
       }
     } catch (err) {
       setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -917,7 +923,7 @@ const SubmitAssignmentPage = () => {
             </div>
 
             <h3 className="text-center text-2xl font-bold text-slate-900">
-              Grading in progress
+              Submitting your assignment
             </h3>
             <p className="mt-2 text-center text-sm text-slate-600">
               {gradingMessages[gradingStep]}
@@ -1111,12 +1117,66 @@ const SubmitAssignmentPage = () => {
           </div>
         </nav>
 
-        <div className="flex min-h-[70vh] items-center justify-center px-4">
-          <div className="text-center">
+        <div className="mx-auto flex min-h-[70vh] w-full max-w-4xl items-center justify-center px-4 py-10">
+          <div className="relative w-full overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/60 to-sky-50 p-8 shadow-sm sm:p-10">
+            <div className="absolute -right-14 -top-14 h-44 w-44 rounded-full bg-emerald-200/40 blur-3xl" />
+            <div className="absolute -left-20 -bottom-20 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl" />
+            <div className="relative">
+              <div className="mb-5 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">
+                Submission Received
+              </div>
+              <div className="mb-6 flex items-center gap-4">
+                <div className="h-11 w-11 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+                    {visibilityPolicy === 'AFTER_REVIEW'
+                      ? 'We are taking care of your assignment, you can leave now'
+                      : 'We are grading your submission'}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-emerald-700">
+                    Your assignment is received successfully.
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {visibilityPolicy === 'AFTER_REVIEW'
+                      ? 'Assistant and teacher review is in progress. You can leave now.'
+                      : 'You can stay on this page or leave it. Grading will continue in the background.'}
+                  </p>
+                </div>
+              </div>
+
             {infoMessage && (
-              <p className="mb-4 text-sm font-semibold text-emerald-700">{infoMessage}</p>
+                <div className="mb-6 rounded-xl border border-emerald-200 bg-white/90 px-4 py-3 text-sm font-semibold text-emerald-700">
+                  {infoMessage}
+                </div>
             )}
-            <p className="text-3xl font-bold text-slate-900">Being graded...</p>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Status
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-emerald-700">In Progress</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Submitted
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-800">
+                    {existingSubmission?.submittedAt
+                      ? new Date(existingSubmission.submittedAt).toLocaleString()
+                      : 'Just now'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Visibility
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-800">
+                    {visibilityPolicy === 'AFTER_REVIEW' ? 'After review' : 'After deadline'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1188,16 +1248,56 @@ const SubmitAssignmentPage = () => {
           </div>
         </nav>
 
-        <div className="flex min-h-[70vh] items-center justify-center px-4">
-          <div className="max-w-2xl text-center">
-            <p className="text-2xl font-semibold text-slate-900">
-              Your submission is graded but results are not visible yet.
-            </p>
-            <p className="mt-3 text-slate-600">
-              {visibilityPolicy === 'AFTER_REVIEW'
-                ? 'Results will appear after teacher review.'
-                : 'Results will appear after deadline.'}
-            </p>
+        <div className="mx-auto flex min-h-[70vh] w-full max-w-4xl items-center justify-center px-4 py-10">
+          <div className="w-full rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-emerald-50 p-8 shadow-sm sm:p-10">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                  Grade Ready
+                </div>
+                <h2 className="mt-4 text-2xl font-bold text-slate-900 sm:text-3xl">
+                  Your submission is graded
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  Results are currently hidden based on assignment settings.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                {visibilityPolicy === 'AFTER_REVIEW' ? 'Waiting for review approval' : 'Waiting for due date'}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Results Visibility
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-800">
+                  {visibilityPolicy === 'AFTER_REVIEW'
+                    ? 'Results will appear after teacher review.'
+                    : 'Results will appear after deadline.'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Last Submission
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-800">
+                  {existingSubmission?.submittedAt
+                    ? new Date(existingSubmission.submittedAt).toLocaleString()
+                    : 'Not available'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={() => navigate(-1)}
+                className="rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                {t('common.back')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1557,7 +1657,7 @@ const SubmitAssignmentPage = () => {
                   : 'border-slate-300 hover:border-emerald-500'
               }`}
               onClick={() => {
-                if (canSubmit) {
+                if (canSubmit && !loading) {
                   fileInputRef.current?.click();
                 }
               }}
@@ -1572,7 +1672,7 @@ const SubmitAssignmentPage = () => {
                 type="file"
                 accept=".pdf"
                 onChange={handleFileChange}
-                disabled={!canSubmit}
+                disabled={!canSubmit || loading}
                 className="hidden"
               />
             </div>

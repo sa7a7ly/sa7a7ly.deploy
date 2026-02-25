@@ -1,7 +1,10 @@
 import React from 'react';
 import logo from '../images/image.png';
+import { useI18n } from '../context/I18nContext';
 
 const Footer = () => {
+  const { t } = useI18n();
+
   return (
     <footer className="bg-slate-900 text-slate-100">
       <div className="max-w-7xl mx-auto px-4 py-12 grid gap-8 md:grid-cols-4">
@@ -16,33 +19,30 @@ const Footer = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">
                 Sa7a7ly
               </p>
-              <p className="text-lg font-bold">Smarter Learning</p>
+              <p className="text-lg font-bold">{t('footer.brandTitle')}</p>
             </div>
           </div>
           <p className="text-sm text-slate-300">
-            We help students and teachers simplify assignments, improve learning,
-            and achieve higher grades with AI-powered feedback.
+            {t('footer.brandBody')}
           </p>
         </div>
 
         <div className="space-y-3">
-          <p className="text-sm font-semibold text-white">Who We Are</p>
+          <p className="text-sm font-semibold text-white">{t('footer.aboutTitle')}</p>
           <p className="text-sm text-slate-300">
-            Sa7a7ly is an education web app built to make classrooms more
-            efficient and outcomes more transparent for everyone.
+            {t('footer.aboutBody')}
           </p>
         </div>
 
         <div className="space-y-3">
-          <p className="text-sm font-semibold text-white">Join Us</p>
+          <p className="text-sm font-semibold text-white">{t('footer.joinTitle')}</p>
           <p className="text-sm text-slate-300">
-            Ready to modernize your classroom? Join Sa7a7ly and give your
-            students faster, clearer feedback and better results.
+            {t('footer.joinBody')}
           </p>
         </div>
 
         <div className="space-y-3">
-          <p className="text-sm font-semibold text-white">Contact</p>
+          <p className="text-sm font-semibold text-white">{t('footer.contactTitle')}</p>
           <div className="space-y-2 text-sm text-slate-300">
             <a
               href="https://wa.me/201095490525"
@@ -50,7 +50,7 @@ const Footer = () => {
               rel="noreferrer"
               target="_blank"
             >
-              WhatsApp: 01095490525
+              {t('footer.whatsapp')}
             </a>
             <a
               href="https://www.instagram.com/sa7a7ly?igsh=MWwxbGRsdnM1NGtzdg=="
@@ -81,7 +81,7 @@ const Footer = () => {
       </div>
       <div className="border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4 py-4 text-xs text-slate-400">
-          © {new Date().getFullYear()} Sa7a7ly. All rights reserved.
+          © {new Date().getFullYear()} {t('footer.copyright')}
         </div>
       </div>
     </footer>

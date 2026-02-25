@@ -20,10 +20,121 @@ const RegisterPage = () => {
 
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
   const { t } = useI18n();
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateStudentForm = () => {
+    const nextErrors = {};
+    const name = studentFormData.name.trim();
+    const email = studentFormData.email.trim();
+    const password = studentFormData.password;
+
+    if (!name) {
+      nextErrors.name = t('authErrors.nameRequired');
+    } else if (name.length < 2) {
+      nextErrors.name = t('authErrors.nameMin');
+    }
+
+    if (!email) {
+      nextErrors.email = t('authErrors.emailRequired');
+    } else if (!emailRegex.test(email)) {
+      nextErrors.email = t('authErrors.emailInvalid');
+    }
+
+    if (!password) {
+      nextErrors.password = t('authErrors.passwordRequired');
+    } else if (password.length < 6) {
+      nextErrors.password = t('authErrors.passwordMin');
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const validateAssistantForm = () => {
+    const nextErrors = {};
+    const name = assistantFormData.name.trim();
+    const email = assistantFormData.email.trim();
+    const password = assistantFormData.password;
+    const assistantCode = assistantFormData.assistantCode.trim();
+
+    if (!name) {
+      nextErrors.name = t('authErrors.nameRequired');
+    } else if (name.length < 2) {
+      nextErrors.name = t('authErrors.nameMin');
+    }
+
+    if (!email) {
+      nextErrors.email = t('authErrors.emailRequired');
+    } else if (!emailRegex.test(email)) {
+      nextErrors.email = t('authErrors.emailInvalid');
+    }
+
+    if (!password) {
+      nextErrors.password = t('authErrors.passwordRequired');
+    } else if (password.length < 6) {
+      nextErrors.password = t('authErrors.passwordMin');
+    }
+
+    if (!assistantCode) {
+      nextErrors.assistantCode = t('authErrors.assistantCodeRequired');
+    } else if (!/^[A-Z0-9]{8}$/.test(assistantCode)) {
+      nextErrors.assistantCode = t('authErrors.assistantCodeInvalid');
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const mapRegisterError = (err, isAssistant) => {
+    if (!err?.response) {
+      return t('authErrors.network');
+    }
+
+    const status = err.response.status;
+    const serverMessage = err.response?.data?.message;
+    const serverErrors = err.response?.data?.errors;
+
+    if (Array.isArray(serverErrors) && serverErrors.length > 0) {
+      const firstMessage = serverErrors[0]?.msg || serverErrors[0]?.message;
+      if (firstMessage) {
+        return firstMessage;
+      }
+    }
+
+    if (typeof serverMessage === 'string' && serverMessage.trim()) {
+      return serverMessage;
+    }
+
+    if (status === 400) {
+      return isAssistant
+        ? t('authErrors.checkAssistantDetails')
+        : t('authErrors.checkDetails');
+    }
+    if (status === 401 || status === 403) {
+      return isAssistant
+        ? t('authErrors.assistantCodeExpired')
+        : t('authErrors.notAllowed');
+    }
+    if (status === 409) {
+      return t('authErrors.emailExists');
+    }
+    if (status === 429) {
+      return t('authErrors.tooManyAttempts');
+    }
+    if (status >= 500) {
+      return t('authErrors.server');
+    }
+
+    return isAssistant
+      ? t('authErrors.assistantRegisterFailed')
+      : t('authErrors.registerFailed');
+  };
 
   const handleStudentChange = (e) => {
     const { name, value } = e.target;
@@ -31,6 +142,8 @@ const RegisterPage = () => {
       ...prev,
       [name]: value,
     }));
+    setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    if (error) setError('');
   };
 
   const handleAssistantChange = (e) => {
@@ -39,24 +152,33 @@ const RegisterPage = () => {
       ...prev,
       [name]: name === 'assistantCode' ? value.toUpperCase() : value,
     }));
+    setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    if (error) setError('');
   };
 
   const handleStudentSubmit = async (e) => {
     e.preventDefault();
+    if (loading) {
+      return;
+    }
+
     setError('');
+    if (!validateStudentForm()) {
+      return;
+    }
     setLoading(true);
 
     try {
       const response = await registerUser({
-        name: studentFormData.name,
-        email: studentFormData.email,
+        name: studentFormData.name.trim(),
+        email: studentFormData.email.trim(),
         password: studentFormData.password,
       });
 
       login(response.data);
       navigate('/student-dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      setError(mapRegisterError(err, false));
     } finally {
       setLoading(false);
     }
@@ -64,21 +186,28 @@ const RegisterPage = () => {
 
   const handleAssistantSubmit = async (e) => {
     e.preventDefault();
+    if (loading) {
+      return;
+    }
+
     setError('');
+    if (!validateAssistantForm()) {
+      return;
+    }
     setLoading(true);
 
     try {
       const response = await registerAssistant({
-        name: assistantFormData.name,
-        email: assistantFormData.email,
+        name: assistantFormData.name.trim(),
+        email: assistantFormData.email.trim(),
         password: assistantFormData.password,
-        assistantCode: assistantFormData.assistantCode,
+        assistantCode: assistantFormData.assistantCode.trim().toUpperCase(),
       });
 
       login(response.data);
       navigate('/assistant-dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Assistant registration failed');
+      setError(mapRegisterError(err, true));
     } finally {
       setLoading(false);
     }
@@ -158,9 +287,18 @@ const RegisterPage = () => {
               value={showAssistantForm ? assistantFormData.name : studentFormData.name}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
               required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoComplete="name"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                fieldErrors.name
+                  ? 'border-red-300 focus:ring-red-500'
+                  : 'border-slate-300 focus:ring-emerald-500'
+              }`}
               placeholder="Your name"
+              aria-invalid={Boolean(fieldErrors.name)}
             />
+            {fieldErrors.name && (
+              <p className="mt-2 text-sm text-red-600">{fieldErrors.name}</p>
+            )}
           </div>
 
           <div>
@@ -173,9 +311,18 @@ const RegisterPage = () => {
               value={showAssistantForm ? assistantFormData.email : studentFormData.email}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
               required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoComplete="email"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                fieldErrors.email
+                  ? 'border-red-300 focus:ring-red-500'
+                  : 'border-slate-300 focus:ring-emerald-500'
+              }`}
               placeholder="your@email.com"
+              aria-invalid={Boolean(fieldErrors.email)}
             />
+            {fieldErrors.email && (
+              <p className="mt-2 text-sm text-red-600">{fieldErrors.email}</p>
+            )}
           </div>
 
           <div>
@@ -188,9 +335,18 @@ const RegisterPage = () => {
               value={showAssistantForm ? assistantFormData.password : studentFormData.password}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
               required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoComplete="new-password"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                fieldErrors.password
+                  ? 'border-red-300 focus:ring-red-500'
+                  : 'border-slate-300 focus:ring-emerald-500'
+              }`}
               placeholder="••••••••"
+              aria-invalid={Boolean(fieldErrors.password)}
             />
+            {fieldErrors.password && (
+              <p className="mt-2 text-sm text-red-600">{fieldErrors.password}</p>
+            )}
           </div>
 
           {showAssistantForm && (
@@ -205,9 +361,17 @@ const RegisterPage = () => {
                 onChange={handleAssistantChange}
                 required
                 maxLength={8}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className={`w-full px-4 py-2 border rounded-lg uppercase tracking-widest focus:outline-none focus:ring-2 ${
+                  fieldErrors.assistantCode
+                    ? 'border-red-300 focus:ring-red-500'
+                    : 'border-slate-300 focus:ring-emerald-500'
+                }`}
                 placeholder="8-character code"
+                aria-invalid={Boolean(fieldErrors.assistantCode)}
               />
+              {fieldErrors.assistantCode && (
+                <p className="mt-2 text-sm text-red-600">{fieldErrors.assistantCode}</p>
+              )}
             </div>
           )}
 
@@ -229,6 +393,7 @@ const RegisterPage = () => {
           onClick={() => {
             setShowAssistantForm((prev) => !prev);
             setError('');
+            setFieldErrors({});
           }}
           className="w-full mt-3 px-4 py-2 bg-white text-emerald-700 border border-emerald-600 rounded-lg font-semibold hover:bg-emerald-50 transition"
         >
