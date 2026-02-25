@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" +
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" +
   process.env.GEMINI_API_KEY;
 
 const DETERMINISTIC_GENERATION_CONFIG = {
@@ -12,6 +12,7 @@ const DETERMINISTIC_GENERATION_CONFIG = {
   seed: 42,
   responseMimeType: "application/json",
 };
+
 
 function buildDeterministicPayload(parts) {
   return {
