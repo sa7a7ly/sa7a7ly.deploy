@@ -1,14 +1,11 @@
 const fs = require("fs");
 const axios = require("axios");
-const crypto = require("crypto");
 const Submission = require("../models/Submission");
 const Assignment = require("../models/Assignment");
 const ResubmissionRequest = require("../models/ResubmissionRequest");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
 const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
-const { getGradingStrategy } = require("../services/grading/getStrategy");
-const { gradeWithStrategy } = require("../services/grading/engine");
 const gradingQueue = require("../queues/gradingQueue");
 
 const RESULT_VISIBILITY = {
@@ -342,14 +339,16 @@ exports.submitAssignment = async(req, res) => {
 exports.submitAssignmentOnBehalf = async(req, res) => {
     try {
         const { assignmentId, studentId, studentName, submittedBy } = req.body;
+        const requesterId = req.user?.userId;
+        const requesterRole = req.user?.role;
         const normalizedStudentName = (studentName || "").trim();
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
         }
-        if (!assignmentId || !submittedBy || (!studentId && !normalizedStudentName)) {
+        if (!assignmentId || (!studentId && !normalizedStudentName)) {
             return res.status(400).json({
-                message: "assignmentId, submittedBy, and studentName are required",
+                message: "assignmentId and studentName are required",
             });
         }
 
@@ -363,7 +362,17 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             return res.status(404).json({ message: "Classroom not found" });
         }
 
-        const staff = await User.findById(submittedBy);
+        if (requesterRole !== "TEACHER" && requesterRole !== "ASSISTANT") {
+            return res.status(403).json({ message: "Only teacher or assistant can submit on behalf" });
+        }
+        if (!requesterId) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+        if (submittedBy && submittedBy.toString() !== requesterId.toString()) {
+            return res.status(403).json({ message: "submittedBy must match authenticated user" });
+        }
+
+        const staff = await User.findById(requesterId);
         if (!staff || (staff.role !== "TEACHER" && staff.role !== "ASSISTANT")) {
             return res.status(403).json({ message: "Only teacher or assistant can submit on behalf" });
         }
@@ -401,66 +410,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             });
         }
 
-        const studentPdf = req.file.buffer || fs.readFileSync(req.file.path);
-        const studentMimeType = getStudentMimeType(req.file);
         const studentUploadFormat = getStudentUploadFormat(req.file);
-        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
-
-        const studentHash = crypto
-            .createHash("sha256")
-            .update(studentPdf)
-            .digest("hex");
-        const modelHash = crypto
-            .createHash("sha256")
-            .update(modelPdf)
-            .digest("hex");
-
-        if (studentHash === modelHash) {
-            let pdfPath = req.file.path || null;
-            if (req.file.buffer) {
-                const uploadedSubmission = await uploadPdfBuffer(
-                    req.file.buffer,
-                    "sa7a7ly/submissions",
-                    studentUploadFormat
-                );
-                pdfPath = uploadedSubmission.secure_url;
-            }
-
-            const submission = await Submission.create({
-                assignmentId,
-                studentId: studentId || null,
-                studentName: normalizedStudentName,
-                pdfPath,
-                grade: assignment.totalPoints,
-                feedback: "Identical to model answer. Full marks awarded.",
-                submittedBy: staff._id,
-                submittedByRole: staff.role,
-                gradedAt: new Date(),
-            });
-
-            if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
-                latestRequest.used = true;
-                latestRequest.usedAt = new Date();
-                await latestRequest.save();
-            }
-
-            return res.status(201).json({
-                submission,
-                alreadySubmitted: false,
-                resubmissionRequest: latestRequest || null,
-            });
-        }
-
-        const strategy = getGradingStrategy(assignment);
-        const grading = await gradeWithStrategy({
-            strategy,
-            assignment,
-            studentPdf,
-            studentMimeType,
-            modelPdf,
-        });
-        const { result, feedbackText } = grading;
-
         let pdfPath = req.file.path || null;
         if (req.file.buffer) {
             const uploadedSubmission = await uploadPdfBuffer(
@@ -476,11 +426,9 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             studentId: studentId || null,
             studentName: normalizedStudentName,
             pdfPath,
-            grade: result.totalGrade,
-            feedback: feedbackText.trim(),
             submittedBy: staff._id,
             submittedByRole: staff.role,
-            gradedAt: new Date(),
+            status: "QUEUED",
         });
 
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
@@ -489,7 +437,9 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             await latestRequest.save();
         }
 
-        res.status(201).json({
+        await gradingQueue.add("grade", { submissionId: submission._id.toString() });
+
+        return res.status(201).json({
             submission,
             alreadySubmitted: false,
             resubmissionRequest: latestRequest || null,
