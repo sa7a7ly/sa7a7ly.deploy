@@ -16,6 +16,17 @@ const REDIS_URL = process.env.REDIS_URL || "redis://127.0.0.1:6379";
 const PDF_DOWNLOAD_TIMEOUT_MS = 20000;
 const PDF_DOWNLOAD_RETRIES = 2;
 
+function serializeError(err) {
+  return {
+    name: err?.name,
+    message: err?.message,
+    code: err?.code,
+    status: err?.response?.status || err?.status || null,
+    responseData: err?.response?.data || null,
+    stack: err?.stack || null,
+  };
+}
+
 function parseCloudinaryAsset(urlString) {
   try {
     const url = new URL(urlString);
@@ -196,7 +207,11 @@ async function startWorker() {
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`Grading job failed: ${job?.id || "unknown"}`, err.message);
+    console.error(`Grading job failed: ${job?.id || "unknown"}`, {
+      jobName: job?.name || null,
+      submissionId: job?.data?.submissionId || null,
+      error: serializeError(err),
+    });
   });
 
   const shutdown = async () => {
