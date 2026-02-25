@@ -19,5 +19,12 @@ services:
     depends_on:
       - redis
 
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
   redis:
     image: redis:7-alpine
