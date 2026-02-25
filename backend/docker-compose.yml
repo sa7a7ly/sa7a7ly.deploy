@@ -3,23 +3,21 @@ version: "3.8"
 services:
 
   backend:
-    build: .
+    build: ./backend
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - ./backend/.env
     depends_on:
       - redis
 
   worker:
-    build: .
+    build: ./backend
     command: node workers/gradingWorker.js
     env_file:
-      - .env
+      - ./backend/.env
     depends_on:
       - redis
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
