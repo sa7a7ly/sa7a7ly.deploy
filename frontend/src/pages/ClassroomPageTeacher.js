@@ -73,23 +73,23 @@ const ClassroomPageTeacher = () => {
 
   const formatDateTime = (value) => {
     if (!value) {
-      return 'No deadline';
+      return t('common.noDeadline');
     }
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? 'No deadline' : date.toLocaleString();
+    return Number.isNaN(date.getTime()) ? t('common.noDeadline') : date.toLocaleString();
   };
 
   const getTimeLeft = (value) => {
     if (!value) {
-      return 'No deadline';
+      return t('common.noDeadline');
     }
     const due = new Date(value).getTime();
     if (Number.isNaN(due)) {
-      return 'No deadline';
+      return t('common.noDeadline');
     }
     const diff = due - (Date.now() + timeOffsetMs);
     if (diff <= 0) {
-      return 'Past due';
+      return t('common.pastDue');
     }
     const minutes = Math.floor(diff / 60000);
     const days = Math.floor(minutes / 1440);
@@ -167,7 +167,7 @@ const ClassroomPageTeacher = () => {
                 />
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                    Classroom tools
+                    {t('classroom.classroomTools')}
                   </p>
                   <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
                     {t('classroom.manageAssignments')}
@@ -175,8 +175,7 @@ const ClassroomPageTeacher = () => {
                 </div>
               </div>
               <p className="mt-4 text-base leading-relaxed text-slate-700">
-                Create assignments, share the join code, and keep students on
-                track.
+                {t('classroom.teacherHubBody')}
               </p>
             </div>
             <div className="grid w-full max-w-sm grid-cols-2 gap-4 text-center">
@@ -184,19 +183,19 @@ const ClassroomPageTeacher = () => {
                 <p className="text-2xl font-bold text-slate-900">
                   {assignments.length}
                 </p>
-                <p className="text-sm text-slate-600">Assignments</p>
+                <p className="text-sm text-slate-600">{t('common.assignments')}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                <p className="text-2xl font-bold text-slate-900">Share</p>
-                <p className="text-sm text-slate-600">Join code</p>
+                <p className="text-2xl font-bold text-slate-900">{t('classroom.share')}</p>
+                <p className="text-sm text-slate-600">{t('classroom.joinCode')}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                <p className="text-2xl font-bold text-slate-900">Quick</p>
-                <p className="text-sm text-slate-600">Create tasks</p>
+                <p className="text-2xl font-bold text-slate-900">{t('classroom.quick')}</p>
+                <p className="text-sm text-slate-600">{t('classroom.createTasks')}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                <p className="text-2xl font-bold text-slate-900">Track</p>
-                <p className="text-sm text-slate-600">Progress</p>
+                <p className="text-2xl font-bold text-slate-900">{t('classroom.track')}</p>
+                <p className="text-sm text-slate-600">{t('studentDashboard.progress')}</p>
               </div>
             </div>
           </div>
@@ -226,7 +225,7 @@ const ClassroomPageTeacher = () => {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  Assignments
+                  {t('common.assignments')}
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900">
                   {t('classroom.manageAssignments')}
@@ -281,7 +280,7 @@ const ClassroomPageTeacher = () => {
                     {assignment.title}
                   </h3>
                   <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    {assignment.totalPoints} pts
+                    {assignment.totalPoints} {t('common.points')}
                   </span>
                 </div>
                 <p className="mt-2 text-slate-600">{assignment.description}</p>
