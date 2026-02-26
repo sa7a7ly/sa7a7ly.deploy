@@ -16,17 +16,6 @@ const RESULT_VISIBILITY = {
 
 const PDF_DOWNLOAD_TIMEOUT_MS = 20000;
 const PDF_DOWNLOAD_RETRIES = 2;
-
-function serializeError(err) {
-    return {
-        name: err?.name,
-        message: err?.message,
-        code: err?.code,
-        status: err?.response?.status || err?.status || null,
-        responseData: err?.response?.data || null,
-        stack: err?.stack || null,
-    };
-}
 function getStudentMimeType(file) {
     if (file && file.mimetype) {
         return file.mimetype;
@@ -329,7 +318,12 @@ exports.submitAssignment = async(req, res) => {
             resubmissionRequest: latestRequest || null,
         });
     } catch (err) {
-        console.error("SUBMISSION ERROR [submitAssignment]:", serializeError(err));
+        console.error(
+            "SUBMISSION ERROR:",
+            err && err.response && err.response.data ?
+            err.response.data :
+            err
+        );
 
         return res.status(500).json({
             message: err &&
@@ -345,16 +339,14 @@ exports.submitAssignment = async(req, res) => {
 exports.submitAssignmentOnBehalf = async(req, res) => {
     try {
         const { assignmentId, studentId, studentName, submittedBy } = req.body;
-        const requesterId = req.user?.userId;
-        const requesterRole = req.user?.role;
         const normalizedStudentName = (studentName || "").trim();
 
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
         }
-        if (!assignmentId || (!studentId && !normalizedStudentName)) {
+        if (!assignmentId || !submittedBy || (!studentId && !normalizedStudentName)) {
             return res.status(400).json({
-                message: "assignmentId and studentName are required",
+                message: "assignmentId, submittedBy, and studentName are required",
             });
         }
 
@@ -368,17 +360,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             return res.status(404).json({ message: "Classroom not found" });
         }
 
-        if (requesterRole !== "TEACHER" && requesterRole !== "ASSISTANT") {
-            return res.status(403).json({ message: "Only teacher or assistant can submit on behalf" });
-        }
-        if (!requesterId) {
-            return res.status(401).json({ message: "Unauthorized" });
-        }
-        if (submittedBy && submittedBy.toString() !== requesterId.toString()) {
-            return res.status(403).json({ message: "submittedBy must match authenticated user" });
-        }
-
-        const staff = await User.findById(requesterId);
+        const staff = await User.findById(submittedBy);
         if (!staff || (staff.role !== "TEACHER" && staff.role !== "ASSISTANT")) {
             return res.status(403).json({ message: "Only teacher or assistant can submit on behalf" });
         }
@@ -417,15 +399,17 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
         }
 
         const studentUploadFormat = getStudentUploadFormat(req.file);
-        let pdfPath = req.file.path || null;
-        if (req.file.buffer) {
-            const uploadedSubmission = await uploadPdfBuffer(
-                req.file.buffer,
-                "sa7a7ly/submissions",
-                studentUploadFormat
-            );
-            pdfPath = uploadedSubmission.secure_url;
+        const uploadBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+        if (!uploadBuffer) {
+            return res.status(400).json({ message: "Invalid PDF upload" });
         }
+
+        const uploadedSubmission = await uploadPdfBuffer(
+            uploadBuffer,
+            "sa7a7ly/submissions",
+            studentUploadFormat
+        );
+        const pdfPath = uploadedSubmission.secure_url;
 
         const submission = await Submission.create({
             assignmentId,
@@ -451,7 +435,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             resubmissionRequest: latestRequest || null,
         });
     } catch (err) {
-        console.error("SUBMISSION ERROR [submitAssignmentOnBehalf]:", serializeError(err));
+        console.error("SUBMISSION ERROR:", err);
         res.status(500).json({ message: err.message });
     }
 };
@@ -551,7 +535,6 @@ exports.getStudentSubmission = async(req, res) => {
             resubmissionRequest: resubmissionRequest || null,
         });
     } catch (err) {
-        console.error("SUBMISSION ERROR [getStudentSubmission]:", serializeError(err));
         res.status(500).json({ message: err.message });
     }
 };
@@ -613,7 +596,6 @@ exports.markSubmissionsReviewed = async(req, res) => {
             modifiedCount: updateResult.modifiedCount || 0,
         });
     } catch (err) {
-        console.error("SUBMISSION ERROR [markSubmissionsReviewed]:", serializeError(err));
         return res.status(500).json({ message: err.message });
     }
 };
@@ -685,7 +667,39 @@ exports.updateSubmissionReview = async(req, res) => {
             visibilityPolicy: payload.visibilityPolicy,
         });
     } catch (err) {
-        console.error("SUBMISSION ERROR [updateSubmissionReview]:", serializeError(err));
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+// DELETE submission (teacher/assistant/admin)
+exports.deleteSubmission = async(req, res) => {
+    try {
+        const submission = await Submission.findById(req.params.id).select(
+            "assignmentId"
+        );
+        if (!submission) {
+            return res.status(404).json({ message: "Submission not found" });
+        }
+
+        const assignment = await Assignment.findById(submission.assignmentId).select(
+            "classroomId"
+        );
+        if (!assignment) {
+            return res.status(404).json({ message: "Assignment not found" });
+        }
+
+        const allowed = await canManageSubmissionForClassroom(
+            req.user?.userId,
+            req.user?.role,
+            assignment.classroomId
+        );
+        if (!allowed) {
+            return res.status(403).json({ message: "Not allowed to delete this submission" });
+        }
+
+        await Submission.findByIdAndDelete(req.params.id);
+        return res.json({ message: "Submission deleted" });
+    } catch (err) {
         return res.status(500).json({ message: err.message });
     }
 };
@@ -730,8 +744,6 @@ exports.getSubmissionPdf = async(req, res) => {
         res.setHeader("Content-Disposition", `inline; filename="submission-${submission._id}.pdf"`);
         return res.send(pdfBuffer);
     } catch (err) {
-        console.error("SUBMISSION ERROR [getSubmissionPdf]:", serializeError(err));
         return res.status(500).json({ message: err.message });
     }
 };
-

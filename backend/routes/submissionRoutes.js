@@ -8,13 +8,26 @@ const { requireRole } = require('../middleware/roleMiddleware');
 
 router.use(authenticateToken);
 
-router.post('/', uploadSubmission.single('pdf'), subscriptionGuard, submissionController.submitAssignment);
-router.post('/on-behalf', uploadSubmission.single('pdf'), subscriptionGuard, submissionController.submitAssignmentOnBehalf);
+router.post(
+  '/',
+  requireRole('STUDENT'),
+  uploadSubmission.single('pdf'),
+  subscriptionGuard,
+  submissionController.submitAssignment
+);
+router.post(
+  '/on-behalf',
+  requireRole('ADMIN', 'TEACHER', 'ASSISTANT'),
+  uploadSubmission.single('pdf'),
+  subscriptionGuard,
+  submissionController.submitAssignmentOnBehalf
+);
 router.post('/mark-reviewed', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.markSubmissionsReviewed);
 router.get('/', submissionController.getSubmissions);
 router.get('/by-student', submissionController.getStudentSubmission);
 router.get('/:id/pdf', submissionController.getSubmissionPdf);
 router.patch('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.updateSubmissionReview);
+router.delete('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.deleteSubmission);
 router.get('/:id', submissionController.getSubmission);
 
 module.exports = router;
