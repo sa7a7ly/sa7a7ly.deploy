@@ -161,6 +161,39 @@ const GradeOnBehalfPage = () => {
     return savedFeedbacks.slice(start, start + PAGE_SIZE);
   }, [savedFeedbacks, savedPage]);
 
+  const renderPaginationControls = () => (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600">
+          Showing {(savedPage - 1) * PAGE_SIZE + 1}-
+          {Math.min(savedPage * PAGE_SIZE, savedFeedbacks.length)} of{' '}
+          {savedFeedbacks.length} submissions
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSavedPage((p) => Math.max(1, p - 1))}
+            disabled={savedPage === 1}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-slate-700">
+            {savedPage} / {totalSavedPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSavedPage((p) => Math.min(totalSavedPages, p + 1))}
+            disabled={savedPage === totalSavedPages}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -723,6 +756,7 @@ const GradeOnBehalfPage = () => {
             <h3 className="text-lg font-bold text-slate-900">{t('gradeOnBehalf.savedFeedbacks')}</h3>
             <p className="text-sm text-slate-600">{t('gradeOnBehalf.latestSubmissions')}</p>
           </div>
+          {savedFeedbacks.length > 0 && <div className="mt-4">{renderPaginationControls()}</div>}
           {savedFeedbacks.length === 0 ? (
             <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               {t('gradeOnBehalf.noSavedFeedbacks')}
@@ -799,38 +833,7 @@ const GradeOnBehalfPage = () => {
               ))}
             </div>
           )}
-          {savedFeedbacks.length > 0 && (
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-slate-600">
-                  Showing {(savedPage - 1) * PAGE_SIZE + 1}-
-                  {Math.min(savedPage * PAGE_SIZE, savedFeedbacks.length)} of{' '}
-                  {savedFeedbacks.length} submissions
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSavedPage((p) => Math.max(1, p - 1))}
-                    disabled={savedPage === 1}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                  >
-                    Previous
-                  </button>
-                  <span className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-slate-700">
-                    {savedPage} / {totalSavedPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSavedPage((p) => Math.min(totalSavedPages, p + 1))}
-                    disabled={savedPage === totalSavedPages}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {savedFeedbacks.length > 0 && <div className="mt-5">{renderPaginationControls()}</div>}
         </section>
 
         {error && (
