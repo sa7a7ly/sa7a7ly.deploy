@@ -6,6 +6,17 @@ const connection = new IORedis(
   { maxRetriesPerRequest: null }
 );
 
-const gradingQueue = new Queue("grading", { connection });
+const gradingQueue = new Queue("grading", {
+  connection,
+  defaultJobOptions: {
+    attempts: 20,
+    backoff: {
+      type: "exponential",
+      delay: 600000,
+    },
+    removeOnComplete: true,
+    removeOnFail: false,
+  },
+});
 
 module.exports = gradingQueue;

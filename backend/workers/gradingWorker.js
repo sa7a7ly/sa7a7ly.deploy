@@ -3,7 +3,7 @@ const fs = require("fs");
 const axios = require("axios");
 const mongoose = require("mongoose");
 const IORedis = require("ioredis");
-const { Worker } = require("bullmq");
+const { Worker, UnrecoverableError } = require("bullmq");
 
 const connectDB = require("../config/db");
 const Submission = require("../models/Submission");
@@ -15,17 +15,6 @@ const { gradeWithStrategy } = require("../services/grading/engine");
 const REDIS_URL = process.env.REDIS_URL || "redis://127.0.0.1:6379";
 const PDF_DOWNLOAD_TIMEOUT_MS = 20000;
 const PDF_DOWNLOAD_RETRIES = 2;
-
-function serializeError(err) {
-  return {
-    name: err?.name,
-    message: err?.message,
-    code: err?.code,
-    status: err?.response?.status || err?.status || null,
-    responseData: err?.response?.data || null,
-    stack: err?.stack || null,
-  };
-}
 
 function parseCloudinaryAsset(urlString) {
   try {
@@ -139,6 +128,21 @@ async function getPdfBuffer(source) {
 
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
 
+function getHttpStatus(err) {
+  const status = Number(err?.response?.status);
+  return Number.isFinite(status) ? status : null;
+}
+
+function isTemporaryError(err) {
+  const status = getHttpStatus(err);
+  return status == null || status === 429 || status >= 500;
+}
+
+function isPermanentClientError(err) {
+  const status = getHttpStatus(err);
+  return status >= 400 && status < 500 && status !== 429;
+}
+
 async function processGradingJob(job) {
   const { submissionId } = job.data || {};
   if (!submissionId) {
@@ -183,22 +187,36 @@ async function startWorker() {
   const worker = new Worker(
     "grading",
     async (job) => {
+      const { submissionId } = job.data || {};
+
+      if (submissionId) {
+        await Submission.findByIdAndUpdate(submissionId, {
+          $set: { status: "PROCESSING" },
+        }).catch(() => null);
+      }
+
       try {
         await processGradingJob(job);
       } catch (err) {
-        const { submissionId } = job.data || {};
-        if (submissionId) {
+        if (submissionId && isPermanentClientError(err)) {
           await Submission.findByIdAndUpdate(submissionId, {
             $set: {
-              status: "FAILED",
+              status: "FAILED_PERMANENT",
             },
           }).catch(() => null);
+          throw new UnrecoverableError(err.message || "Permanent client error");
         }
+
+        if (isTemporaryError(err)) {
+          throw err;
+        }
+
         throw err;
       }
     },
     {
       connection,
+      concurrency: 1,
     }
   );
 
@@ -207,11 +225,7 @@ async function startWorker() {
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`Grading job failed: ${job?.id || "unknown"}`, {
-      jobName: job?.name || null,
-      submissionId: job?.data?.submissionId || null,
-      error: serializeError(err),
-    });
+    console.error(`Grading job failed: ${job?.id || "unknown"}`, err.message);
   });
 
   const shutdown = async () => {
