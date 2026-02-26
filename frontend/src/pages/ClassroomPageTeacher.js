@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getAssignments, createAssignment, getClassrooms } from '../services/api';
+import {
+  getAssignments,
+  createAssignment,
+  getClassrooms,
+  updateAssignment,
+  deleteAssignment,
+} from '../services/api';
 import CreateAssignmentModal from '../components/CreateAssignmentModal';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
@@ -21,8 +27,13 @@ const ClassroomPageTeacher = () => {
   const [classroom, setClassroom] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState('');
   const [timeOffsetMs, setTimeOffsetMs] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState('');
+  const [editingTitle, setEditingTitle] = useState('');
+  const [savingAssignmentId, setSavingAssignmentId] = useState('');
+  const [deletingAssignmentId, setDeletingAssignmentId] = useState('');
 
   useEffect(() => {
     fetchClassroom();
@@ -60,9 +71,67 @@ const ClassroomPageTeacher = () => {
     try {
       await createAssignment(formData);
       setShowModal(false);
+      setActionError('');
       fetchAssignments();
     } catch (err) {
       console.error('Failed to create assignment:', err);
+    }
+  };
+
+  const startEditTitle = (assignment) => {
+    setEditingAssignmentId(assignment._id);
+    setEditingTitle(assignment.title || '');
+    setActionError('');
+  };
+
+  const cancelEditTitle = () => {
+    setEditingAssignmentId('');
+    setEditingTitle('');
+  };
+
+  const saveTitle = async (assignmentId) => {
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle) {
+      setActionError('Assignment title is required.');
+      return;
+    }
+
+    try {
+      setSavingAssignmentId(assignmentId);
+      const response = await updateAssignment(assignmentId, { title: nextTitle });
+      const updated = response.data;
+      setAssignments((prev) =>
+        prev.map((item) => (item._id === assignmentId ? { ...item, ...updated } : item))
+      );
+      setEditingAssignmentId('');
+      setEditingTitle('');
+      setActionError('');
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Failed to update assignment title.');
+    } finally {
+      setSavingAssignmentId('');
+    }
+  };
+
+  const handleDeleteAssignment = async (assignment) => {
+    const confirmed = window.confirm(
+      `Delete assignment "${assignment.title}"? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingAssignmentId(assignment._id);
+      await deleteAssignment(assignment._id);
+      setAssignments((prev) => prev.filter((item) => item._id !== assignment._id));
+      if (editingAssignmentId === assignment._id) {
+        setEditingAssignmentId('');
+        setEditingTitle('');
+      }
+      setActionError('');
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Failed to delete assignment.');
+    } finally {
+      setDeletingAssignmentId('');
     }
   };
 
@@ -254,6 +323,12 @@ const ClassroomPageTeacher = () => {
               </div>
             </div>
 
+        {actionError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center py-10">
             <p className="text-slate-600">{t('common.loading')}</p>
@@ -276,9 +351,20 @@ const ClassroomPageTeacher = () => {
                 className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-xl font-bold text-slate-900">
-                    {assignment.title}
-                  </h3>
+                  {editingAssignmentId === assignment._id ? (
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  ) : (
+                    <h3 className="text-xl font-bold text-slate-900">
+                      {assignment.title}
+                    </h3>
+                  )}
                   <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                     {assignment.totalPoints} {t('common.points')}
                   </span>
@@ -288,6 +374,45 @@ const ClassroomPageTeacher = () => {
                   <p>{t('common.due')}: {formatDateTime(assignment.dueDate)}</p>
                   <p>{t('common.timeLeft')}: {getTimeLeft(assignment.dueDate)}</p>
                 </div>
+                {canManage && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {editingAssignmentId === assignment._id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => saveTitle(assignment._id)}
+                          disabled={savingAssignmentId === assignment._id}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {savingAssignmentId === assignment._id ? t('common.loading') : t('common.update')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditTitle}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditTitle(assignment)}
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Edit title
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAssignment(assignment)}
+                      disabled={deletingAssignmentId === assignment._id}
+                      className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {deletingAssignmentId === assignment._id ? t('common.loading') : 'Delete'}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

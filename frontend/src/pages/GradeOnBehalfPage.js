@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../context/AuthContext';
@@ -6,11 +6,15 @@ import {
   getAssignments,
   getClassroom,
   getSubmissions,
+  deleteSubmission,
   submitAssignmentOnBehalf,
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import logo from '../images/image.png';
 import arabicEssayPdfLogo from '../images/ms_Eman_logo.jpeg';
+
+const PAGE_SIZE = 8;
+const FETCH_LIMIT = 50;
 
 const loadImageForPdf = (src) =>
   new Promise((resolve, reject) => {
@@ -41,10 +45,12 @@ const GradeOnBehalfPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingSubmissionId, setDeletingSubmissionId] = useState('');
   const [error, setError] = useState('');
   const [classroom, setClassroom] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [savedFeedbacks, setSavedFeedbacks] = useState([]);
+  const [savedPage, setSavedPage] = useState(1);
 
   const [studentName, setStudentName] = useState('');
   const [result, setResult] = useState(null);
@@ -64,20 +70,49 @@ const GradeOnBehalfPage = () => {
       : logo;
 
   useEffect(() => {
+    const fetchAllClassroomSubmissions = async (targetClassroomId) => {
+      let page = 1;
+      let allSubmissions = [];
+      let totalCount = Infinity;
+
+      while (allSubmissions.length < totalCount) {
+        const response = await getSubmissions(null, targetClassroomId, {
+          page,
+          limit: FETCH_LIMIT,
+        });
+        const pageItems = response.data || [];
+        const headerTotal = Number(response.headers?.['x-total-count']);
+
+        if (Number.isFinite(headerTotal) && headerTotal >= 0) {
+          totalCount = headerTotal;
+        }
+
+        allSubmissions = allSubmissions.concat(pageItems);
+
+        if (pageItems.length === 0 || pageItems.length < FETCH_LIMIT) {
+          break;
+        }
+
+        page += 1;
+      }
+
+      return allSubmissions;
+    };
+
     const load = async () => {
       try {
         setLoading(true);
-        const [classroomRes, assignmentsRes, submissionsRes] = await Promise.all([
+        const [classroomRes, assignmentsRes, submissions] = await Promise.all([
           getClassroom(classroomId),
           getAssignments(classroomId),
-          getSubmissions(null, classroomId),
+          fetchAllClassroomSubmissions(classroomId),
         ]);
 
         const assignmentTitleMap = new Map(
           (assignmentsRes.data || []).map((a) => [a._id, a.title])
         );
 
-        const onBehalfSubmissions = (submissionsRes.data || [])
+        const onBehalfSubmissions = (submissions || [])
           .filter(
             (s) =>
               s.submittedByRole === 'TEACHER' || s.submittedByRole === 'ASSISTANT'
@@ -99,6 +134,7 @@ const GradeOnBehalfPage = () => {
         setClassroom(classroomRes.data);
         setAssignments(assignmentsRes.data || []);
         setSavedFeedbacks(onBehalfSubmissions);
+        setSavedPage(1);
         setError('');
       } catch (err) {
         setError(err.response?.data?.message || t('errors.failedLoadSubmissions'));
@@ -111,6 +147,19 @@ const GradeOnBehalfPage = () => {
       load();
     }
   }, [classroomId, t]);
+
+  const totalSavedPages = Math.max(1, Math.ceil(savedFeedbacks.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (savedPage > totalSavedPages) {
+      setSavedPage(totalSavedPages);
+    }
+  }, [savedPage, totalSavedPages]);
+
+  const paginatedSavedFeedbacks = useMemo(() => {
+    const start = (savedPage - 1) * PAGE_SIZE;
+    return savedFeedbacks.slice(start, start + PAGE_SIZE);
+  }, [savedFeedbacks, savedPage]);
 
   const handleLogout = () => {
     logout();
@@ -172,6 +221,7 @@ const GradeOnBehalfPage = () => {
           },
           ...prev,
         ]);
+        setSavedPage(1);
       }
 
       setFormData({ assignmentId: '', pdf: null });
@@ -180,6 +230,22 @@ const GradeOnBehalfPage = () => {
       setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteSavedSubmission = async (submissionId) => {
+    const confirmed = window.confirm('Delete this submission?');
+    if (!confirmed) return;
+
+    try {
+      setDeletingSubmissionId(submissionId);
+      await deleteSubmission(submissionId);
+      setSavedFeedbacks((prev) => prev.filter((item) => item._id !== submissionId));
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete submission');
+    } finally {
+      setDeletingSubmissionId('');
     }
   };
 
@@ -237,23 +303,99 @@ const GradeOnBehalfPage = () => {
     doc.text('Sa7a7ly', margin + 30, 28);
 
     y = 50;
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, 24, 3, 3, 'S');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Student', margin + 4, y + 9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(student || 'N/A', margin + 4, y + 18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Assignment', margin + 80, y + 9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(assignmentTitle || 'N/A', margin + 80, y + 18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Grade', pageWidth - margin - 26, y + 9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(String(grade ?? 'N/A'), pageWidth - margin - 26, y + 18);
+    const summaryW = pageWidth - margin * 2;
+    const summaryH = 24;
+    const studentW = summaryW * 0.32;
+    const assignmentW = summaryW * 0.48;
+    const gradeW = summaryW - studentW - assignmentW;
+    const studentX = margin;
+    const assignmentX = studentX + studentW;
+    const gradeX = assignmentX + assignmentW;
 
-    y += 34;
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, summaryW, summaryH, 3, 3, 'S');
+    doc.line(assignmentX, y, assignmentX, y + summaryH);
+    doc.line(gradeX, y, gradeX, y + summaryH);
+
+    const drawSectionValue = ({ label, value, x, width }) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(label, x + width / 2, y + 6, { align: 'center' });
+
+      const valueText = String(value || 'N/A');
+      const hasArabic = /[\u0600-\u06FF]/.test(valueText);
+
+      if (!hasArabic) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        const lines = doc.splitTextToSize(valueText, width - 8);
+        const singleLine = lines[0] || 'N/A';
+        doc.text(singleLine, x + width / 2, y + 14, { align: 'center' });
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 120;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        doc.text(valueText, x + width / 2, y + 14, { align: 'center' });
+        return;
+      }
+
+      const arabicFontFamily = "'Noto Naskh Arabic','Amiri','Tahoma','Arial',sans-serif";
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.direction = 'rtl';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.font = `46px ${arabicFontFamily}`;
+      ctx.fillStyle = '#111827';
+
+      const horizontalPadding = 30;
+      const maxTextWidthPx = canvas.width - horizontalPadding * 2;
+      const words = valueText.split(/\s+/).filter(Boolean);
+      const lines = [];
+      let current = '';
+      words.forEach((word) => {
+        const test = current ? `${current} ${word}` : word;
+        if (ctx.measureText(test).width <= maxTextWidthPx) {
+          current = test;
+        } else {
+          if (current) lines.push(current);
+          current = word;
+        }
+      });
+      if (current) lines.push(current);
+
+      const singleLine = lines[0] || 'N/A';
+      const displayLine = lines.length > 1 ? `${singleLine}...` : singleLine;
+      ctx.fillText(displayLine, canvas.width - horizontalPadding, 10);
+
+      const img = canvas.toDataURL('image/png');
+      doc.addImage(img, 'PNG', x + 3, y + 8, width - 6, 8);
+    };
+
+    drawSectionValue({
+      label: 'Student',
+      value: student || 'N/A',
+      x: studentX,
+      width: studentW,
+    });
+    drawSectionValue({
+      label: 'Assignment',
+      value: assignmentTitle || 'N/A',
+      x: assignmentX,
+      width: assignmentW,
+    });
+    drawSectionValue({
+      label: 'Grade',
+      value: String(grade ?? 'N/A'),
+      x: gradeX,
+      width: gradeW,
+    });
+
+    y += 30;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.text('Feedback Summary', margin, y);
@@ -587,7 +729,7 @@ const GradeOnBehalfPage = () => {
             </p>
           ) : (
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {savedFeedbacks.map((submission) => (
+              {paginatedSavedFeedbacks.map((submission) => (
                 <div
                   key={submission._id}
                   className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4"
@@ -644,9 +786,49 @@ const GradeOnBehalfPage = () => {
                     >
                       {t('common.downloadPdf')}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSavedSubmission(submission._id)}
+                      disabled={deletingSubmissionId === submission._id}
+                      className="mt-1 inline-flex w-fit items-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {deletingSubmissionId === submission._id ? t('common.loading') : 'Delete'}
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {savedFeedbacks.length > 0 && (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-slate-600">
+                  Showing {(savedPage - 1) * PAGE_SIZE + 1}-
+                  {Math.min(savedPage * PAGE_SIZE, savedFeedbacks.length)} of{' '}
+                  {savedFeedbacks.length} submissions
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSavedPage((p) => Math.max(1, p - 1))}
+                    disabled={savedPage === 1}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-slate-700">
+                    {savedPage} / {totalSavedPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSavedPage((p) => Math.min(totalSavedPages, p + 1))}
+                    disabled={savedPage === totalSavedPages}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -666,4 +848,3 @@ const GradeOnBehalfPage = () => {
 };
 
 export default GradeOnBehalfPage;
-

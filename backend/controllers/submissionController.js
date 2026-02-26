@@ -731,6 +731,39 @@ exports.updateSubmissionReview = async(req, res) => {
     }
 };
 
+// DELETE submission (teacher/assistant/admin)
+exports.deleteSubmission = async(req, res) => {
+    try {
+        const submission = await Submission.findById(req.params.id).select(
+            "assignmentId"
+        );
+        if (!submission) {
+            return res.status(404).json({ message: "Submission not found" });
+        }
+
+        const assignment = await Assignment.findById(submission.assignmentId).select(
+            "classroomId"
+        );
+        if (!assignment) {
+            return res.status(404).json({ message: "Assignment not found" });
+        }
+
+        const allowed = await canManageSubmissionForClassroom(
+            req.user?.userId,
+            req.user?.role,
+            assignment.classroomId
+        );
+        if (!allowed) {
+            return res.status(403).json({ message: "Not allowed to delete this submission" });
+        }
+
+        await Submission.findByIdAndDelete(req.params.id);
+        return res.json({ message: "Submission deleted" });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
+
 // GET submission PDF (authenticated proxy)
 exports.getSubmissionPdf = async(req, res) => {
     try {
@@ -774,4 +807,3 @@ exports.getSubmissionPdf = async(req, res) => {
         return res.status(500).json({ message: err.message });
     }
 };
-

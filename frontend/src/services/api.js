@@ -85,6 +85,12 @@ export const getAssignments = (classroomId) =>
 export const getAssignmentById = (id) =>
   API.get(`/assignments/${id}`);
 
+export const updateAssignment = (id, data) =>
+  API.put(`/assignments/${id}`, data);
+
+export const deleteAssignment = (id) =>
+  API.delete(`/assignments/${id}`);
+
 export const submitAssignment = (formData) =>
   API.post('/submissions', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -95,14 +101,24 @@ export const submitAssignmentOnBehalf = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
-export const getSubmissions = (assignmentId, classroomId) => {
+export const getSubmissions = (assignmentId, classroomId, options = {}) => {
+  const params = new URLSearchParams();
+
   if (classroomId) {
-    return API.get(`/submissions?classroomId=${classroomId}`);
+    params.set('classroomId', classroomId);
+  } else if (assignmentId) {
+    params.set('assignmentId', assignmentId);
   }
-  if (assignmentId) {
-    return API.get(`/submissions?assignmentId=${assignmentId}`);
+
+  if (options.page) {
+    params.set('page', String(options.page));
   }
-  return API.get('/submissions');
+  if (options.limit) {
+    params.set('limit', String(options.limit));
+  }
+
+  const query = params.toString();
+  return API.get(`/submissions${query ? `?${query}` : ''}`);
 };
 
 export const getStudentSubmissions = (studentId) =>
@@ -119,6 +135,9 @@ export const getSubmissionPdf = (submissionId) =>
 
 export const getSubmissionById = (submissionId) =>
   API.get(`/submissions/${submissionId}`);
+
+export const deleteSubmission = (submissionId) =>
+  API.delete(`/submissions/${submissionId}`);
 
 export const markSubmissionsReviewed = (data) =>
   API.post('/submissions/mark-reviewed', data);
