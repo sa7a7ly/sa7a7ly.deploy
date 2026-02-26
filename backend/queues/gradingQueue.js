@@ -9,7 +9,7 @@ const connection = new IORedis(
 const gradingQueue = new Queue("grading", {
   connection,
   defaultJobOptions: {
-    attempts: 20,
+    attempts: 10,
     backoff: {
       type: "exponential",
       delay: 600000,

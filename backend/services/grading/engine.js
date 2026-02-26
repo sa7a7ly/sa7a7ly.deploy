@@ -24,7 +24,7 @@ function buildDeterministicPayload(parts) {
 async function callGemini(payload, retries = 2) {
   try {
     const response = await axios.post(GEMINI_URL, payload, {
-      timeout: 180000,
+      timeout: 600000,
     });
 
     if (
