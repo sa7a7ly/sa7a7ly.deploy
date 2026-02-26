@@ -13,6 +13,78 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
+const PAGED_FETCH_LIMIT = 100;
+const MAX_PAGED_FETCH_LOOPS = 100;
+
+const buildQueryString = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    query.set(key, String(value));
+  });
+  return query.toString();
+};
+
+const fetchAllPages = async (path, params = {}) => {
+  let page = 1;
+  let allItems = [];
+  let totalCount = Infinity;
+  let firstResponse = null;
+
+  while (page <= MAX_PAGED_FETCH_LOOPS && allItems.length < totalCount) {
+    const query = buildQueryString({
+      ...params,
+      page,
+      limit: PAGED_FETCH_LIMIT,
+    });
+    const response = await API.get(`${path}${query ? `?${query}` : ''}`);
+
+    if (!firstResponse) {
+      firstResponse = response;
+    }
+
+    const pageItems = Array.isArray(response.data) ? response.data : [];
+    const headerTotal = Number(response.headers?.['x-total-count']);
+
+    if (Number.isFinite(headerTotal) && headerTotal >= 0) {
+      totalCount = headerTotal;
+    }
+
+    allItems = allItems.concat(pageItems);
+
+    if (pageItems.length < PAGED_FETCH_LIMIT) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  if (!firstResponse) {
+    return {
+      data: [],
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+      config: {},
+      request: undefined,
+    };
+  }
+
+  const normalizedTotal =
+    Number.isFinite(totalCount) && totalCount >= 0 ? totalCount : allItems.length;
+
+  return {
+    ...firstResponse,
+    data: allItems,
+    headers: {
+      ...firstResponse.headers,
+      'x-total-count': String(normalizedTotal),
+      'x-page': '1',
+      'x-limit': String(Math.max(allItems.length, 1)),
+    },
+  };
+};
+
 // AUTH
 export const registerUser = (data) =>
   API.post('/users/register', data);
@@ -35,24 +107,24 @@ export const joinClassroom = (data) =>
   API.post('/classrooms/join', data);
 
 export const getClassrooms = () =>
-  API.get('/classrooms');
+  fetchAllPages('/classrooms');
 
 export const getClassroom = (id) =>
   API.get(`/classrooms/${id}`);
 
 export const getClassroomStudents = (id) =>
-  API.get(`/classrooms/${id}/students`);
+  fetchAllPages(`/classrooms/${id}/students`);
 export const getUsers = () =>
-  API.get('/users');
+  fetchAllPages('/users');
 
 export const getUser = (id) =>
   API.get(`/users/${id}`);
 
 export const getAllAssignments = () =>
-  API.get('/assignments');
+  fetchAllPages('/assignments');
 
 export const getAllSubmissions = () =>
-  API.get('/submissions');
+  fetchAllPages('/submissions');
 
 export const createTeacher = (data, adminSecret) =>
   API.post('/users/teachers', data, {
@@ -69,7 +141,7 @@ export const updateTeacherSubscription = (teacherId, data, adminSecret) =>
   });
 
 export const getTeacherAssistants = (teacherId) =>
-  API.get(`/users/teachers/${teacherId}/assistants`);
+  fetchAllPages(`/users/teachers/${teacherId}/assistants`);
 
 export const getTeacherAssistantCode = (teacherId) =>
   API.get(`/users/teachers/${teacherId}/assistant-code`);
@@ -80,10 +152,16 @@ export const createAssignment = (formData) =>
   });
 
 export const getAssignments = (classroomId) =>
-  API.get(`/assignments?classroomId=${classroomId}`);
+  fetchAllPages('/assignments', { classroomId });
 
 export const getAssignmentById = (id) =>
   API.get(`/assignments/${id}`);
+
+export const updateAssignment = (id, data) =>
+  API.put(`/assignments/${id}`, data);
+
+export const deleteAssignment = (id) =>
+  API.delete(`/assignments/${id}`);
 
 export const submitAssignment = (formData) =>
   API.post('/submissions', formData, {
@@ -95,18 +173,28 @@ export const submitAssignmentOnBehalf = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
-export const getSubmissions = (assignmentId, classroomId) => {
+export const getSubmissions = (assignmentId, classroomId, options = {}) => {
+  const params = new URLSearchParams();
+
   if (classroomId) {
-    return API.get(`/submissions?classroomId=${classroomId}`);
+    params.set('classroomId', classroomId);
+  } else if (assignmentId) {
+    params.set('assignmentId', assignmentId);
   }
-  if (assignmentId) {
-    return API.get(`/submissions?assignmentId=${assignmentId}`);
+
+  if (options.page) {
+    params.set('page', String(options.page));
   }
-  return API.get('/submissions');
+  if (options.limit) {
+    params.set('limit', String(options.limit));
+  }
+
+  const query = params.toString();
+  return API.get(`/submissions${query ? `?${query}` : ''}`);
 };
 
 export const getStudentSubmissions = (studentId) =>
-  API.get(`/submissions?studentId=${studentId}`);
+  fetchAllPages('/submissions', { studentId });
 
 export const getStudentSubmission = (assignmentId, studentId) =>
   API.get(`/submissions/by-student?assignmentId=${assignmentId}&studentId=${studentId}`);
@@ -119,6 +207,9 @@ export const getSubmissionPdf = (submissionId) =>
 
 export const getSubmissionById = (submissionId) =>
   API.get(`/submissions/${submissionId}`);
+
+export const deleteSubmission = (submissionId) =>
+  API.delete(`/submissions/${submissionId}`);
 
 export const markSubmissionsReviewed = (data) =>
   API.post('/submissions/mark-reviewed', data);

@@ -642,31 +642,101 @@ const SubmitAssignmentPage = () => {
     doc.text('Sa7a7ly', margin + 30, 28);
 
     y = 50;
+    const summaryW = pageWidth - margin * 2;
+    const summaryH = 24;
+    const studentW = summaryW * 0.32;
+    const assignmentW = summaryW * 0.48;
+    const gradeW = summaryW - studentW - assignmentW;
+    const studentX = margin;
+    const assignmentX = studentX + studentW;
+    const gradeX = assignmentX + assignmentW;
+
     doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(margin, y, pageWidth - margin * 2, 24, 3, 3, 'S');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Student', margin + 4, y + 9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(user?.name || 'N/A', margin + 4, y + 18);
+    doc.roundedRect(margin, y, summaryW, summaryH, 3, 3, 'S');
+    doc.line(assignmentX, y, assignmentX, y + summaryH);
+    doc.line(gradeX, y, gradeX, y + summaryH);
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('Assignment', margin + 80, y + 9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(assignment?.title || 'N/A', margin + 80, y + 18);
+    const drawSectionValue = ({ label, value, x, width }) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(label, x + width / 2, y + 6, { align: 'center' });
 
-    doc.setFont('helvetica', 'bold');
-    doc.text('Grade', pageWidth - margin - 26, y + 9);
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      `${result.grade}${
+      const valueText = String(value || 'N/A');
+      const hasArabic = /[\u0600-\u06FF]/.test(valueText);
+
+      if (!hasArabic) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        const lines = doc.splitTextToSize(valueText, width - 8);
+        const singleLine = lines[0] || 'N/A';
+        doc.text(singleLine, x + width / 2, y + 14, { align: 'center' });
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 120;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        doc.text(valueText, x + width / 2, y + 14, { align: 'center' });
+        return;
+      }
+
+      const arabicFontFamily = "'Noto Naskh Arabic','Amiri','Tahoma','Arial',sans-serif";
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.direction = 'rtl';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.font = `46px ${arabicFontFamily}`;
+      ctx.fillStyle = '#111827';
+
+      const horizontalPadding = 30;
+      const maxTextWidthPx = canvas.width - horizontalPadding * 2;
+      const words = valueText.split(/\s+/).filter(Boolean);
+      const lines = [];
+      let current = '';
+      words.forEach((word) => {
+        const test = current ? `${current} ${word}` : word;
+        if (ctx.measureText(test).width <= maxTextWidthPx) {
+          current = test;
+        } else {
+          if (current) lines.push(current);
+          current = word;
+        }
+      });
+      if (current) lines.push(current);
+
+      const singleLine = lines[0] || 'N/A';
+      const displayLine = lines.length > 1 ? `${singleLine}...` : singleLine;
+      ctx.fillText(displayLine, canvas.width - horizontalPadding, 10);
+
+      const img = canvas.toDataURL('image/png');
+      doc.addImage(img, 'PNG', x + 3, y + 8, width - 6, 8);
+    };
+
+    drawSectionValue({
+      label: 'Student',
+      value: user?.name || 'N/A',
+      x: studentX,
+      width: studentW,
+    });
+    drawSectionValue({
+      label: 'Assignment',
+      value: assignment?.title || 'N/A',
+      x: assignmentX,
+      width: assignmentW,
+    });
+    drawSectionValue({
+      label: 'Grade',
+      value: `${result.grade}${
         assignment?.totalPoints != null ? ` / ${assignment.totalPoints}` : ''
       }`,
-      pageWidth - margin - 26,
-      y + 18
-    );
+      x: gradeX,
+      width: gradeW,
+    });
 
-    y += 34;
+    y += 30;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.text('Feedback Summary', margin, y);

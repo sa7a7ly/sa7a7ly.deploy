@@ -5,11 +5,15 @@ import {
   getClassroom,
   getSubmissions,
   getSubmissionPdf,
+  deleteSubmission,
   markSubmissionsReviewed,
   updateSubmission,
 } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import logo from '../images/image.png';
+
+const PAGE_SIZE = 10;
+const FETCH_LIMIT = 50;
 
 const ClassroomSubmissionsPage = () => {
   const { classroomId } = useParams();
@@ -24,19 +28,52 @@ const ClassroomSubmissionsPage = () => {
   const [editingFeedback, setEditingFeedback] = useState({});
   const [editingGrade, setEditingGrade] = useState({});
   const [savingSubmissionId, setSavingSubmissionId] = useState(null);
+  const [deletingSubmissionId, setDeletingSubmissionId] = useState(null);
   const [publishingAll, setPublishingAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showStudentTrend, setShowStudentTrend] = useState(false);
+
+  const fetchAllClassroomSubmissions = async (targetClassroomId) => {
+    let page = 1;
+    let allSubmissions = [];
+    let totalCount = Infinity;
+
+    while (allSubmissions.length < totalCount) {
+      const response = await getSubmissions(undefined, targetClassroomId, {
+        page,
+        limit: FETCH_LIMIT,
+      });
+      const pageItems = response.data || [];
+      const headerTotal = Number(response.headers?.['x-total-count']);
+
+      if (Number.isFinite(headerTotal) && headerTotal >= 0) {
+        totalCount = headerTotal;
+      }
+
+      allSubmissions = allSubmissions.concat(pageItems);
+
+      if (pageItems.length === 0 || pageItems.length < FETCH_LIMIT) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return allSubmissions;
+  };
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [classroomRes, submissionsRes] =
+      const [classroomRes, allSubmissions] =
         await Promise.all([
           getClassroom(classroomId),
-          getSubmissions(undefined, classroomId),
+          fetchAllClassroomSubmissions(classroomId),
         ]);
 
       setClassroom(classroomRes.data);
-      setSubmissions(submissionsRes.data || []);
+      setSubmissions(allSubmissions || []);
+      setCurrentPage(1);
       setError('');
     } catch (err) {
       setError(err.response?.data?.message || t('errors.failedLoadSubmissions'));
@@ -56,16 +93,36 @@ const ClassroomSubmissionsPage = () => {
     navigate('/');
   };
 
+  const sortedSubmissions = useMemo(
+    () =>
+      [...submissions].sort(
+        (a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)
+      ),
+    [submissions]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sortedSubmissions.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedSubmissions = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sortedSubmissions.slice(start, start + PAGE_SIZE);
+  }, [sortedSubmissions, currentPage]);
 
   const groupedSubmissions = useMemo(() => {
     const grouped = {};
-    submissions.forEach((s) => {
+    paginatedSubmissions.forEach((s) => {
       const assignmentTitle = s.assignmentId?.title || 'Assignment';
       if (!grouped[assignmentTitle]) grouped[assignmentTitle] = [];
       grouped[assignmentTitle].push(s);
     });
     return grouped;
-  }, [submissions]);
+  }, [paginatedSubmissions]);
 
   const studentProgress = useMemo(() => {
     const grouped = {};
@@ -208,6 +265,37 @@ const ClassroomSubmissionsPage = () => {
     }
   };
 
+  const handleDeleteSubmission = async (submissionId) => {
+    const confirmed = window.confirm('Delete this submission?');
+    if (!confirmed) return;
+
+    try {
+      setDeletingSubmissionId(submissionId);
+      await deleteSubmission(submissionId);
+      setSubmissions((prev) => prev.filter((item) => item._id !== submissionId));
+      setOpenFeedback((prev) => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+      setEditingFeedback((prev) => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+      setEditingGrade((prev) => {
+        const next = { ...prev };
+        delete next[submissionId];
+        return next;
+      });
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete submission');
+    } finally {
+      setDeletingSubmissionId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <nav className="bg-white shadow-sm">
@@ -314,36 +402,45 @@ const ClassroomSubmissionsPage = () => {
                   {studentProgress.length} students
                 </span>
               </div>
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {studentProgress.map((student) => (
-                  <div
-                    key={student.name}
-                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {student.name}
-                      </p>
-                      <span className="text-xs font-semibold text-emerald-700">
-                        Avg: {student.average ?? 'N/A'}
-                      </span>
+              <button
+                type="button"
+                onClick={() => setShowStudentTrend((prev) => !prev)}
+                className="mt-4 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {showStudentTrend ? 'Hide trend' : 'View trend'}
+              </button>
+              {showStudentTrend && (
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {studentProgress.map((student) => (
+                    <div
+                      key={student.name}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {student.name}
+                        </p>
+                        <span className="text-xs font-semibold text-emerald-700">
+                          Avg: {student.average ?? 'N/A'}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <p className="text-xs text-slate-500">
+                          Latest: {student.latest ?? 'N/A'}
+                        </p>
+                        <svg viewBox="0 0 100 24" className="h-6 w-28">
+                          <path
+                            d={buildSparkline(student.grades)}
+                            fill="none"
+                            stroke="#10b981"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </div>
                     </div>
-                    <div className="mt-2 flex items-center justify-between">
-                      <p className="text-xs text-slate-500">
-                        Latest: {student.latest ?? 'N/A'}
-                      </p>
-                      <svg viewBox="0 0 100 24" className="h-6 w-28">
-                        <path
-                          d={buildSparkline(student.grades)}
-                          fill="none"
-                          stroke="#10b981"
-                          strokeWidth="2"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             {Object.keys(groupedSubmissions).map((title) => (
@@ -398,6 +495,14 @@ const ClassroomSubmissionsPage = () => {
                           {t('common.viewPdf')}
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSubmission(submission._id)}
+                        disabled={deletingSubmissionId === submission._id}
+                        className="mt-3 ml-2 inline-flex rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deletingSubmissionId === submission._id ? t('common.loading') : 'Delete'}
+                      </button>
                       {openFeedback[submission._id] && (
                         <div className="mt-3 space-y-3">
                           <div>
@@ -453,6 +558,37 @@ const ClassroomSubmissionsPage = () => {
                 </div>
               </div>
             ))}
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-slate-600">
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}-
+                  {Math.min(currentPage * PAGE_SIZE, sortedSubmissions.length)} of{' '}
+                  {sortedSubmissions.length} submissions
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
