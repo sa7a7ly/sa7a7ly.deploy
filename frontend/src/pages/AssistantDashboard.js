@@ -278,6 +278,14 @@ const AssistantDashboard = () => {
                     <p className="mt-1 text-sm text-slate-500">
                       Assist grading and support assignments.
                     </p>
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
+                        Students
+                      </p>
+                      <p className="text-lg font-bold text-slate-900">
+                        {classroom.studentIds?.length || 0}
+                      </p>
+                    </div>
                     <button
                       onClick={() => navigate(`/classroom/${classroom._id}`)}
                       className="mt-4 w-full rounded-lg border border-slate-200 bg-slate-900 px-4 py-2 text-white transition hover:bg-slate-800"

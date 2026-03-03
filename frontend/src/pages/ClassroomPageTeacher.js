@@ -5,6 +5,7 @@ import {
   getAssignments,
   createAssignment,
   getClassrooms,
+  getClassroomStudents,
   updateAssignment,
   deleteAssignment,
 } from '../services/api';
@@ -26,6 +27,9 @@ const ClassroomPageTeacher = () => {
   const canManage = subscriptionActive && !subscriptionExpired;
   const [classroom, setClassroom] = useState(null);
   const [assignments, setAssignments] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(true);
+  const [studentsError, setStudentsError] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState('');
   const [timeOffsetMs, setTimeOffsetMs] = useState(0);
@@ -38,6 +42,7 @@ const ClassroomPageTeacher = () => {
   useEffect(() => {
     fetchClassroom();
     fetchAssignments();
+    fetchStudents();
   }, [classroomId]);
 
   const fetchClassroom = async () => {
@@ -64,6 +69,20 @@ const ClassroomPageTeacher = () => {
       console.error('Failed to load assignments:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchStudents = async () => {
+    try {
+      setStudentsLoading(true);
+      const response = await getClassroomStudents(classroomId);
+      setStudents(response.data || []);
+      setStudentsError('');
+    } catch (err) {
+      setStudents([]);
+      setStudentsError(err.response?.data?.message || 'Failed to load students.');
+    } finally {
+      setStudentsLoading(false);
     }
   };
 
@@ -250,9 +269,9 @@ const ClassroomPageTeacher = () => {
             <div className="grid w-full max-w-sm grid-cols-2 gap-4 text-center">
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <p className="text-2xl font-bold text-slate-900">
-                  {assignments.length}
+                  {students.length}
                 </p>
-                <p className="text-sm text-slate-600">{t('common.assignments')}</p>
+                <p className="text-sm text-slate-600">Students</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <p className="text-2xl font-bold text-slate-900">{t('classroom.share')}</p>
@@ -419,6 +438,61 @@ const ClassroomPageTeacher = () => {
         )}
           </section>
         </div>
+
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Classroom Students
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900">
+                {students.length} Students
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={fetchStudents}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {studentsError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {studentsError}
+            </div>
+          )}
+
+          {studentsLoading ? (
+            <div className="py-8 text-center text-slate-600">{t('common.loading')}</div>
+          ) : students.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-slate-600">
+              No students in this classroom yet.
+            </div>
+          ) : (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full border border-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Name</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Email</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((student) => (
+                    <tr key={student._id} className="border-t border-slate-200">
+                      <td className="px-3 py-2 text-slate-900">{student.name || '-'}</td>
+                      <td className="px-3 py-2 text-slate-700">{student.email || '-'}</td>
+                      <td className="px-3 py-2 text-slate-700">{student.role || 'STUDENT'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
 
       {showModal && (

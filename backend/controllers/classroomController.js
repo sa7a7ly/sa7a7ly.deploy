@@ -8,6 +8,31 @@ const ROLE = {
   STUDENT: 'STUDENT',
 };
 
+function canAccessClassroomStaffData(classroom, user) {
+  const requesterId = user?.userId?.toString();
+  const requesterRole = user?.role;
+
+  if (!requesterId || !requesterRole || !classroom) {
+    return false;
+  }
+
+  if (requesterRole === ROLE.ADMIN) {
+    return true;
+  }
+
+  if (requesterRole === ROLE.TEACHER) {
+    return classroom.teacherId?.toString() === requesterId;
+  }
+
+  if (requesterRole === ROLE.ASSISTANT) {
+    return (classroom.assistantIds || []).some(
+      (assistantId) => assistantId.toString() === requesterId
+    );
+  }
+
+  return false;
+}
+
 // CREATE classroom (teacher)
 exports.createClassroom = async (req, res) => {
   try {
@@ -102,6 +127,9 @@ exports.getClassroomStudents = async (req, res) => {
       .populate('studentIds', 'name email role');
 
     if (!classroom) return res.status(404).json({ message: 'Not found' });
+    if (!canAccessClassroomStaffData(classroom, req.user)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
 
     const total = (classroom.studentIds || []).length;
     const paged = (classroom.studentIds || []).slice(skip, skip + limit);

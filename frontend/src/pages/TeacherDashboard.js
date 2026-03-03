@@ -348,6 +348,14 @@ const TeacherDashboard = () => {
                     {classroom.joinCode}
                   </p>
                 </div>
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
+                    Students
+                  </p>
+                  <p className="text-lg font-bold text-slate-900">
+                    {classroom.studentIds?.length || 0}
+                  </p>
+                </div>
                 <button
                   onClick={() => navigate(`/classroom/${classroom._id}`)}
                   className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
