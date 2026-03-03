@@ -149,6 +149,8 @@ async function processGradingJob(job) {
     throw new Error("Missing submissionId");
   }
 
+  console.log(`[GradingWorker] Grading started for job ${job.id} (submissionId=${submissionId})`);
+
   const submission = await Submission.findById(submissionId);
   if (!submission) {
     throw new Error(`Submission not found: ${submissionId}`);
@@ -179,6 +181,8 @@ async function processGradingJob(job) {
       gradedAt: new Date(),
     },
   });
+
+  console.log(`[GradingWorker] Grading finished for job ${job.id} (submissionId=${submissionId})`);
 }
 
 async function startWorker() {
@@ -188,6 +192,9 @@ async function startWorker() {
     "grading",
     async (job) => {
       const { submissionId } = job.data || {};
+      console.log(
+        `[GradingWorker] Job received: id=${job.id}, name=${job.name}, submissionId=${submissionId || "n/a"}`
+      );
 
       if (submissionId) {
         await Submission.findByIdAndUpdate(submissionId, {
