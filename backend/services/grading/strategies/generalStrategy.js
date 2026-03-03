@@ -118,15 +118,27 @@ Do not change question max marks between students.
 
 FEEDBACK STYLE RULES:
 
-Use simple, student-friendly language.
-Avoid jargon and long sentences.
+Use very simple, direct language.
+Avoid jargon and long explanations.
 
-For each question "reasonForDeduction", include:
-1) what was done correctly (if any),
-2) what is missing/wrong,
-3) one concrete next step.
+For each question "reasonForDeduction", write ONLY:
 
-Keep each reason concise but specific (about 1-3 short sentences).
+- The exact wrong step, formula, or statement written by the student.
+- The correct version of that step/formula/statement.
+- One short sentence explaining why it is wrong.
+
+Structure it clearly like this:
+
+Wrong: ___  
+Correct: ___  
+Explanation: ___  
+
+Do NOT include praise.
+Do NOT include general comments.
+Do NOT write long paragraphs.
+Only focus on the mistake and its correction.
+
+Keep it concise and very clear.
 
 Make "overallSummary" 3-5 short, clear sentences.
 
@@ -169,6 +181,7 @@ Total maximum marks = ${assignment.totalPoints}
 DO NOT return markdown.
 ONLY return pure JSON.
 `;
+
 }
 
 function buildFeedback(result) {
@@ -208,8 +221,8 @@ function buildFeedback(result) {
 }
 
 module.exports = {
+  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-flash-latest",
   buildPrompt,
   normalizeResult,
   buildFeedback,
 };
-

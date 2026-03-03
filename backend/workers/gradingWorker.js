@@ -216,7 +216,7 @@ async function startWorker() {
     },
     {
       connection,
-      concurrency: 1,
+      concurrency: 5,
     }
   );
 

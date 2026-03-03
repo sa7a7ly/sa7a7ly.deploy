@@ -1,8 +1,34 @@
 const axios = require("axios");
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=" +
-  process.env.GEMINI_API_KEY;
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview";
+const GENERAL_FLASH_FALLBACK_MODELS = [
+  process.env.GEMINI_GENERAL_MODEL_FALLBACK,
+  "gemini-flash-latest",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash-latest",
+
+];
+
+function getGeminiUrl(modelName) {
+  const resolvedModel = String(modelName || DEFAULT_GEMINI_MODEL).trim();
+  return (
+    "https://generativelanguage.googleapis.com/v1beta/models/" +
+    resolvedModel +
+    ":generateContent?key=" +
+    process.env.GEMINI_API_KEY
+  );
+}
+
+function getModelCandidates(modelName) {
+  const requested = String(modelName || DEFAULT_GEMINI_MODEL).trim();
+  if (!requested) return [DEFAULT_GEMINI_MODEL];
+
+  if (!/flash/i.test(requested)) {
+    return [requested];
+  }
+
+  return Array.from(new Set([requested, ...GENERAL_FLASH_FALLBACK_MODELS].filter(Boolean)));
+}
 
 const DETERMINISTIC_GENERATION_CONFIG = {
   temperature: 0,
@@ -21,31 +47,47 @@ function buildDeterministicPayload(parts) {
   };
 }
 
-async function callGemini(payload, retries = 2) {
-  try {
-    const response = await axios.post(GEMINI_URL, payload, {
-      timeout: 600000,
-    });
+async function callGemini(payload, modelName, retries = 2) {
+  const modelCandidates = getModelCandidates(modelName);
+  let lastError = null;
 
-    if (
-      response &&
-      response.data &&
-      response.data.candidates &&
-      response.data.candidates.length > 0 &&
-      response.data.candidates[0].content &&
-      response.data.candidates[0].content.parts &&
-      response.data.candidates[0].content.parts.length > 0
-    ) {
-      return response.data.candidates[0].content.parts[0].text;
-    }
+  for (const candidateModel of modelCandidates) {
+    const geminiUrl = getGeminiUrl(candidateModel);
+    try {
+      const response = await axios.post(geminiUrl, payload, {
+        timeout: 600000,
+      });
 
-    throw new Error("Empty Gemini response");
-  } catch (err) {
-    if (retries > 0) {
-      return callGemini(payload, retries - 1);
+      if (
+        response &&
+        response.data &&
+        response.data.candidates &&
+        response.data.candidates.length > 0 &&
+        response.data.candidates[0].content &&
+        response.data.candidates[0].content.parts &&
+        response.data.candidates[0].content.parts.length > 0
+      ) {
+        return response.data.candidates[0].content.parts[0].text;
+      }
+
+      throw new Error("Empty Gemini response");
+    } catch (err) {
+      const status = Number(err?.response?.status);
+      const isModelNotFound = status === 404;
+      lastError = err;
+
+      if (isModelNotFound) {
+        continue;
+      }
+
+      if (retries > 0) {
+        return callGemini(payload, candidateModel, retries - 1);
+      }
+      throw err;
     }
-    throw err;
   }
+
+  throw lastError || new Error("Gemini request failed");
 }
 
 function parseAiJson(aiText) {
@@ -119,7 +161,7 @@ async function gradeWithStrategy({
     },
   ]);
 
-  const aiText = await callGemini(payload);
+  const aiText = await callGemini(payload, strategy?.modelName);
   let result = parseAiJson(aiText);
 
   if (typeof strategy.normalizeResult === "function") {
@@ -138,4 +180,3 @@ async function gradeWithStrategy({
 module.exports = {
   gradeWithStrategy,
 };
-
