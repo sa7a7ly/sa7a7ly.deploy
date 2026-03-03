@@ -7,12 +7,6 @@ const Classroom = require("../models/Classroom");
 const User = require("../models/User");
 const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
 const gradingQueue = require("../queues/gradingQueue");
-const { gradeWithStrategy } = require("../services/grading/engine");
-const {
-    getGradingStrategy,
-    normalizeGradingProfile,
-    GRADING_PROFILE,
-} = require("../services/grading/getStrategy");
 
 const RESULT_VISIBILITY = {
     IMMEDIATE: "IMMEDIATE",
@@ -149,17 +143,6 @@ function getPublicIdCandidates(publicId) {
     return Array.from(new Set([withExt, withoutExt]));
 }
 
-function formatHttpError(err) {
-    const status = err?.response?.status;
-    const url = err?.config?.url || err?.response?.config?.url;
-    const providerMessage =
-        err?.response?.data?.error?.message ||
-        err?.response?.data?.message ||
-        err?.message ||
-        "Unknown error";
-    return `status=${status || "n/a"} url=${url || "n/a"} message=${providerMessage}`;
-}
-
 async function getPdfBuffer(source, fallbackBuffer) {
     if (fallbackBuffer && source == null) {
         return fallbackBuffer;
@@ -246,44 +229,6 @@ async function getPdfBuffer(source, fallbackBuffer) {
     throw new Error("Unable to read PDF");
 }
 
-function shouldGradeImmediately(assignment) {
-    const gradingProfile = normalizeGradingProfile(assignment?.gradingProfile);
-    return gradingProfile === GRADING_PROFILE.GENERAL;
-}
-
-async function runImmediateGrading(submissionId, assignment, studentPdfBuffer) {
-    try {
-        const strategy = getGradingStrategy(assignment);
-        const modelPdf = await getPdfBuffer(assignment.modelAnswerPdfPath);
-
-        const { result, feedbackText } = await gradeWithStrategy({
-            strategy,
-            assignment,
-            studentPdf: studentPdfBuffer,
-            studentMimeType: "application/pdf",
-            modelPdf,
-        });
-
-        await Submission.findByIdAndUpdate(submissionId, {
-            $set: {
-                status: "DONE",
-                grade: result.totalGrade,
-                feedback: String(feedbackText || "").trim(),
-                gradedAt: new Date(),
-            },
-        });
-    } catch (err) {
-        const errorDetails = formatHttpError(err);
-        await Submission.findByIdAndUpdate(submissionId, {
-            $set: {
-                status: "FAILED_PERMANENT",
-                feedback: `Immediate grading failed: ${errorDetails}`,
-            },
-        }).catch(() => null);
-        throw err;
-    }
-}
-
 exports.submitAssignment = async(req, res) => {
     try {
         const { assignmentId } = req.body;
@@ -345,7 +290,6 @@ exports.submitAssignment = async(req, res) => {
             "sa7a7ly/submissions",
             studentUploadFormat
         );
-        const gradeImmediately = shouldGradeImmediately(assignment);
 
         const submission = await Submission.create({
             assignmentId,
@@ -353,8 +297,9 @@ exports.submitAssignment = async(req, res) => {
             pdfPath: uploadedSubmission.secure_url,
             submittedBy: studentId,
             submittedByRole: "STUDENT",
-            status: gradeImmediately ? "PROCESSING" : "QUEUED",
+            status: "QUEUED",
         });
+        console.log(`[SubmissionFlow] saved (student): submissionId=${submission._id} assignmentId=${assignmentId}`);
 
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
             latestRequest.used = true;
@@ -362,26 +307,32 @@ exports.submitAssignment = async(req, res) => {
             await latestRequest.save();
         }
 
-        let latestSubmission = submission;
-        if (gradeImmediately) {
-            try {
-                await runImmediateGrading(submission._id, assignment, req.file.buffer);
-            } catch (gradingErr) {
-                console.error("Immediate grading failed:", formatHttpError(gradingErr));
-            }
-            latestSubmission = await Submission.findById(submission._id);
-        } else {
-            const classroom = await Classroom.findById(assignment.classroomId).select("teacherId");
-            const teacherId =
-                classroom?.teacherId?.toString() ||
-                assignment.createdBy?.toString() ||
-                null;
-            await gradingQueue.addGradingJob({
+        const classroom = await Classroom.findById(assignment.classroomId).select("teacherId");
+        const teacherId =
+            classroom?.teacherId?.toString() ||
+            assignment.createdBy?.toString() ||
+            null;
+        let queuedJob;
+        try {
+            queuedJob = await gradingQueue.addGradingJob({
                 submissionId: submission._id.toString(),
                 teacherId,
             });
+        } catch (queueErr) {
+            await Submission.findByIdAndUpdate(submission._id, {
+                $set: {
+                    status: "FAILED_PERMANENT",
+                    feedback: `Queueing failed: ${queueErr.message || "Unknown queue error"}`,
+                },
+            }).catch(() => null);
+            throw queueErr;
         }
-        const responsePayload = buildSubmissionResponse(latestSubmission, assignment, req.user?.role);
+        console.log(
+            `[SubmissionFlow] queued (student): submissionId=${submission._id} jobId=${queuedJob?.id || "n/a"}`
+        );
+
+        const responsePayload = buildSubmissionResponse(submission, assignment, req.user?.role);
+        console.log(`[SubmissionFlow] response sent (student): submissionId=${submission._id}`);
 
         return res.status(201).json({
             submission: responsePayload.submission,
@@ -483,7 +434,6 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             studentUploadFormat
         );
         const pdfPath = uploadedSubmission.secure_url;
-        const gradeImmediately = shouldGradeImmediately(assignment);
 
         const submission = await Submission.create({
             assignmentId,
@@ -492,8 +442,11 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             pdfPath,
             submittedBy: staff._id,
             submittedByRole: staff.role,
-            status: gradeImmediately ? "PROCESSING" : "QUEUED",
+            status: "QUEUED",
         });
+        console.log(
+            `[SubmissionFlow] saved (on-behalf): submissionId=${submission._id} assignmentId=${assignmentId}`
+        );
 
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
             latestRequest.used = true;
@@ -501,23 +454,28 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             await latestRequest.save();
         }
 
-        let latestSubmission = submission;
-        if (gradeImmediately) {
-            try {
-                await runImmediateGrading(submission._id, assignment, uploadBuffer);
-            } catch (gradingErr) {
-                console.error("Immediate grading failed:", formatHttpError(gradingErr));
-            }
-            latestSubmission = await Submission.findById(submission._id);
-        } else {
-            await gradingQueue.addGradingJob({
+        let queuedJob;
+        try {
+            queuedJob = await gradingQueue.addGradingJob({
                 submissionId: submission._id.toString(),
                 teacherId: classroom.teacherId?.toString() || null,
             });
+        } catch (queueErr) {
+            await Submission.findByIdAndUpdate(submission._id, {
+                $set: {
+                    status: "FAILED_PERMANENT",
+                    feedback: `Queueing failed: ${queueErr.message || "Unknown queue error"}`,
+                },
+            }).catch(() => null);
+            throw queueErr;
         }
+        console.log(
+            `[SubmissionFlow] queued (on-behalf): submissionId=${submission._id} jobId=${queuedJob?.id || "n/a"}`
+        );
+        console.log(`[SubmissionFlow] response sent (on-behalf): submissionId=${submission._id}`);
 
         return res.status(201).json({
-            submission: latestSubmission,
+            submission,
             alreadySubmitted: false,
             resubmissionRequest: latestRequest || null,
         });
