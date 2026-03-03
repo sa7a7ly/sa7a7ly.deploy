@@ -56,8 +56,15 @@ async function getRoundRobinPriority(teacherId) {
 
 async function addGradingJob(data) {
   const payload = { ...(data || {}) };
+  const submissionId = String(payload.submissionId || "").trim();
+  if (!submissionId) {
+    throw new Error("Missing submissionId for grading job");
+  }
   const priority = await getRoundRobinPriority(payload.teacherId);
-  return gradingQueue.add("grade", payload, { priority });
+  return gradingQueue.add("grade", payload, {
+    priority,
+    jobId: `submission-${submissionId}`,
+  });
 }
 
 module.exports = gradingQueue;
