@@ -94,6 +94,16 @@ Extract all questions from MODEL ANSWER.
 
 Grade EACH question separately.
 
+Use the maximum marks defined for each question in the MODEL ANSWER.
+Do NOT assume a total assignment grade.
+Do NOT use any external total points value.
+All marks must come directly from the MODEL ANSWER question grading.
+
+MARKING PRECISION RULE:
+- All marks must be whole integers.
+- Decimal or fractional marks are NOT allowed under any circumstances (e.g., 0.5, 1.5, 2.75).
+- Partial deductions must be rounded to the nearest whole mark.
+
 Deduct marks for:
 
 Missing important steps
@@ -131,7 +141,7 @@ Structure it clearly like this:
 
 Wrong: ___  
 Correct: ___  
-Explanation: ___  
+Explanation: ___
 
 Do NOT include praise.
 Do NOT include general comments.
@@ -142,12 +152,12 @@ Keep it concise and very clear.
 
 Make "overallSummary" 3-5 short, clear sentences.
 
-Return at least 3 items in "majorMistakes" and at least 3 items in "improvementAdvice"
-when enough evidence exists in the submission.
+Return at least 3 items in "majorMistakes" and at least 3 items in "improvementAdvice" when enough evidence exists in the submission.
 
 DOUBLE CHECK BEFORE RETURNING:
 
 Perform at least 3 verification passes before final output:
+
 Pass 1: Grade each question using the mark scheme/rubric.
 Pass 2: Re-check every deduction against evidence from student answer and mark scheme.
 Pass 3: Recalculate totals and JSON consistency checks.
@@ -160,28 +170,25 @@ No invented mistakes.
 Return ONLY valid JSON:
 
 {
-"detectedLanguage": "arabic or english",
-"totalGrade": number,
-"questions": [
-{
-"questionNumber": "Q1",
-"maxMarks": number,
-"studentMarks": number,
-"marksLost": number,
-"reasonForDeduction": "Clear explanation written in same detected language"
+  "detectedLanguage": "arabic or english",
+  "totalGrade": number,
+  "questions": [
+    {
+      "questionNumber": "Q1",
+      "maxMarks": number,
+      "studentMarks": number,
+      "marksLost": number,
+      "reasonForDeduction": "Clear explanation written in same detected language"
+    }
+  ],
+  "overallSummary": "2-3 sentence strict evaluation in same detected language",
+  "majorMistakes": ["mistake 1 in same detected language"],
+  "improvementAdvice": ["improvement 1 in same detected language"]
 }
-],
-"overallSummary": "2-3 sentence strict evaluation in same detected language",
-"majorMistakes": ["mistake 1 in same detected language"],
-"improvementAdvice": ["improvement 1 in same detected language"]
-}
-
-Total maximum marks = ${assignment.totalPoints}
 
 DO NOT return markdown.
 ONLY return pure JSON.
 `;
-
 }
 
 function buildFeedback(result) {
@@ -221,7 +228,7 @@ function buildFeedback(result) {
 }
 
 module.exports = {
-  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-flash-latest",
+  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-2.5-pro",
   buildPrompt,
   normalizeResult,
   buildFeedback,
