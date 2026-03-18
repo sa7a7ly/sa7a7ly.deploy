@@ -9,17 +9,22 @@ const {
   createTeacher,
   createAdmin,
   login,
+  forgotPassword,
+  resetPassword,
   getUsers,
   getUser,
   updateTeacherSubscription,
   getTeacherAssistants,
-  getTeacherAssistantCode
+  getTeacherAssistantCode,
+  removeTeacherAssistant
 } = require('../controllers/userController');
 
 // Auth
 router.post('/register', register);
 router.post('/register-assistant', registerAssistant);
 router.post('/login', login);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 router.use(authenticateToken);
 
@@ -30,6 +35,7 @@ router.post('/admins', requireRole('ADMIN'), createAdmin);
 router.get('/', requireRole('ADMIN'), getUsers);
 router.get('/teachers/:teacherId/assistants', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), getTeacherAssistants);
 router.get('/teachers/:teacherId/assistant-code', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), getTeacherAssistantCode);
+router.delete('/teachers/:teacherId/assistants/:assistantId', requireRole('ADMIN', 'TEACHER'), removeTeacherAssistant);
 router.patch('/teachers/:id/subscription', requireRole('ADMIN'), updateTeacherSubscription);
 router.get('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), getUser);
 

@@ -1,6 +1,8 @@
 const User = require('../models/User');
+const Classroom = require('../models/Classroom');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { isSmtpConfigured, sendPasswordResetEmail } = require('../services/emailService');
 
 const ROLE = {
   ADMIN: 'ADMIN',
@@ -62,6 +64,15 @@ function signAuthToken(user) {
     secret,
     { expiresIn: '7d' }
   );
+}
+
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function buildPasswordResetUrl(token) {
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  return `${baseUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
 async function refreshTeacherSubscriptionStatus(user) {
@@ -275,13 +286,15 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({ email }).select('+passwordHash');
 
-    if (!user)
-      return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user) {
+      return res.status(404).json({ message: 'No account was found for this email address.' });
+    }
 
     const match = await user.matchPassword(password);
 
-    if (!match)
-      return res.status(400).json({ message: 'Invalid credentials' });
+    if (!match) {
+      return res.status(401).json({ message: 'The password you entered is incorrect.' });
+    }
 
     await refreshTeacherSubscriptionStatus(user);
     const token = signAuthToken(user);
@@ -290,6 +303,90 @@ exports.login = async (req, res) => {
 
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    const user = await User.findOne({ email }).select('+passwordResetTokenHash +passwordResetExpiresAt');
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'This email is incorrect. Please check it again or register if you do not have an account.',
+      });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    user.passwordResetTokenHash = hashResetToken(rawToken);
+    user.passwordResetExpiresAt = new Date(Date.now() + 1000 * 60 * 30);
+    await user.save();
+
+    const resetUrl = buildPasswordResetUrl(rawToken);
+    console.log(`[ForgotPassword] Reset link for ${email}: ${resetUrl}`);
+
+    if (!isSmtpConfigured()) {
+      return res.status(503).json({
+        message: 'Password reset email is not configured on the server.',
+      });
+    }
+
+    try {
+      await sendPasswordResetEmail({ to: user.email, resetUrl });
+    } catch (err) {
+      console.error('[ForgotPassword] Failed to send reset email:', err.message);
+      return res.status(502).json({
+        message: 'We could not send the reset email right now. Please try again later.',
+      });
+    }
+
+    return res.json({
+      message: 'A password reset link was sent.',
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!token) {
+      return res.status(400).json({ message: 'Reset token is required.' });
+    }
+
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required.' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    const user = await User.findOne({
+      passwordResetTokenHash: hashResetToken(token),
+      passwordResetExpiresAt: { $gt: new Date() },
+    }).select('+passwordHash +passwordResetTokenHash +passwordResetExpiresAt');
+
+    if (!user) {
+      return res.status(400).json({ message: 'This password reset link is invalid or has expired.' });
+    }
+
+    user.passwordHash = password;
+    user.passwordResetTokenHash = null;
+    user.passwordResetExpiresAt = null;
+    await user.save();
+
+    return res.json({ message: 'Your password has been reset successfully.' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -347,6 +444,49 @@ exports.getTeacherAssistantCode = async (req, res) => {
     }
 
     return res.json({ assistantCode: teacher.assistantCode });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+};
+
+// REMOVE assistant linked to a teacher
+exports.removeTeacherAssistant = async (req, res) => {
+  try {
+    const { teacherId, assistantId } = req.params;
+    const requesterId = req.user?.userId?.toString();
+    const requesterRole = req.user?.role;
+
+    const teacher = await User.findOne({ _id: teacherId, role: ROLE.TEACHER });
+    if (!teacher) {
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    if (
+      requesterRole !== ROLE.ADMIN &&
+      !(requesterRole === ROLE.TEACHER && teacher._id.toString() === requesterId)
+    ) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const assistant = await User.findOne({
+      _id: assistantId,
+      role: ROLE.ASSISTANT,
+      assistantTeacherId: teacherId,
+    });
+
+    if (!assistant) {
+      return res.status(404).json({ message: 'Assistant not found for this teacher' });
+    }
+
+    await Classroom.updateMany(
+      { teacherId, assistantIds: assistant._id },
+      { $pull: { assistantIds: assistant._id } }
+    );
+
+    assistant.assistantTeacherId = null;
+    await assistant.save();
+
+    return res.json({ message: 'Assistant removed successfully' });
   } catch (err) {
     return res.status(400).json({ message: err.message });
   }

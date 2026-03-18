@@ -5,10 +5,59 @@ import { loginUser } from '../services/api';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
 
+function PasswordEyeButton({ visible, onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="absolute inset-y-0 right-3 flex items-center justify-center text-slate-500 transition hover:text-slate-700 focus:outline-none"
+    >
+      {visible ? (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 3l18 18M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58M9.88 5.09A10.94 10.94 0 0112 5c5 0 9.27 3.11 11 7-1.02 2.29-2.78 4.23-5 5.44M6.61 6.61C4.62 7.91 3.15 9.79 2 12c.69 1.57 1.78 3 3.16 4.16"
+          />
+        </svg>
+      ) : (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className="h-5 w-5"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"
+          />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [formNotice, setFormNotice] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -16,10 +65,17 @@ const LoginPage = () => {
   const { t } = useI18n();
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const getInputClassName = (hasError) =>
+    `w-full px-4 py-2 border rounded-lg transition focus:outline-none focus:ring-2 ${
+      hasError
+        ? 'border-red-400 bg-red-50/70 focus:ring-red-500'
+        : 'border-slate-300 focus:ring-emerald-500'
+    }`;
 
   const validateForm = () => {
     const nextErrors = {};
     const trimmedEmail = email.trim();
+    const missingRequiredField = !trimmedEmail || !password;
 
     if (!trimmedEmail) {
       nextErrors.email = t('authErrors.emailRequired');
@@ -32,6 +88,13 @@ const LoginPage = () => {
     }
 
     setFieldErrors(nextErrors);
+    setFormNotice(
+      Object.keys(nextErrors).length > 0
+        ? missingRequiredField
+          ? t('authErrors.missingFields')
+          : t('authErrors.reviewHighlightedFields')
+        : ''
+    );
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -71,6 +134,21 @@ const LoginPage = () => {
     return t('authErrors.loginFailed');
   };
 
+  const mapLoginFieldErrors = (err) => {
+    const status = Number(err?.response?.status);
+    const serverMessage = String(err?.response?.data?.message || '').toLowerCase();
+
+    if (status === 404 || serverMessage.includes('email')) {
+      return { email: err.response?.data?.message || t('authErrors.emailNotFound') };
+    }
+
+    if (status === 401 || serverMessage.includes('password')) {
+      return { password: err.response?.data?.message || t('authErrors.passwordIncorrect') };
+    }
+
+    return {};
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) {
@@ -78,6 +156,7 @@ const LoginPage = () => {
     }
 
     setError('');
+    setFormNotice('');
     if (!validateForm()) {
       return;
     }
@@ -104,6 +183,14 @@ const LoginPage = () => {
       }
 
     } catch (err) {
+      const nextFieldErrors = mapLoginFieldErrors(err);
+      if (Object.keys(nextFieldErrors).length > 0) {
+        setFieldErrors((prev) => ({ ...prev, ...nextFieldErrors }));
+        setFormNotice(t('authErrors.reviewHighlightedFields'));
+        setError('');
+        return;
+      }
+
       setError(mapLoginError(err));
     } finally {
       setLoading(false);
@@ -160,16 +247,24 @@ const LoginPage = () => {
             {t('auth.loginHelp')}
           </p>
 
-        {error && (
-          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            {error}
+        {formNotice && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">{t('auth.validationTitle')}</p>
+            <p className="mt-1">{formNotice}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p className="font-semibold">{t('auth.loginIssue')}</p>
+            <p className="mt-1">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              {t('common.email')}
+              {t('common.email')} <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
@@ -177,48 +272,56 @@ const LoginPage = () => {
               onChange={(e) => {
                 setEmail(e.target.value);
                 setFieldErrors((prev) => ({ ...prev, email: '' }));
+                if (formNotice) setFormNotice('');
                 if (error) setError('');
               }}
-              required
               autoComplete="email"
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                fieldErrors.email
-                  ? 'border-red-300 focus:ring-red-500'
-                  : 'border-slate-300 focus:ring-emerald-500'
-              }`}
+              className={getInputClassName(Boolean(fieldErrors.email))}
               placeholder="your@email.com"
               aria-invalid={Boolean(fieldErrors.email)}
             />
             {fieldErrors.email && (
-              <p className="mt-2 text-sm text-red-600">{fieldErrors.email}</p>
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.email}</p>
             )}
           </div>
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              {t('common.password')}
+              {t('common.password')} <span className="text-red-500">*</span>
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setFieldErrors((prev) => ({ ...prev, password: '' }));
-                if (error) setError('');
-              }}
-              required
-              autoComplete="current-password"
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                fieldErrors.password
-                  ? 'border-red-300 focus:ring-red-500'
-                  : 'border-slate-300 focus:ring-emerald-500'
-              }`}
-              placeholder="••••••••"
-              aria-invalid={Boolean(fieldErrors.password)}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, password: '' }));
+                  if (formNotice) setFormNotice('');
+                  if (error) setError('');
+                }}
+                autoComplete="current-password"
+                className={`${getInputClassName(Boolean(fieldErrors.password))} pr-12`}
+                placeholder="••••••••"
+                aria-invalid={Boolean(fieldErrors.password)}
+              />
+              <PasswordEyeButton
+                visible={showPassword}
+                onClick={() => setShowPassword((current) => !current)}
+                label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+              />
+            </div>
             {fieldErrors.password && (
-              <p className="mt-2 text-sm text-red-600">{fieldErrors.password}</p>
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.password}</p>
             )}
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => navigate('/forgot-password')}
+                className="text-sm font-semibold text-emerald-700 hover:underline"
+              >
+                {t('auth.forgotPassword')}
+              </button>
+            </div>
           </div>
 
           <button

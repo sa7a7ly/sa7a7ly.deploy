@@ -142,6 +142,45 @@ exports.getClassroomStudents = async (req, res) => {
   }
 };
 
+// REMOVE student from classroom
+exports.removeStudentFromClassroom = async (req, res) => {
+  try {
+    const { id, studentId } = req.params;
+    const classroom = await Classroom.findById(id);
+
+    if (!classroom) {
+      return res.status(404).json({ message: 'Classroom not found' });
+    }
+
+    if (!canAccessClassroomStaffData(classroom, req.user)) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const student = await User.findById(studentId).select('role');
+    if (!student || student.role !== ROLE.STUDENT) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    const isEnrolled = (classroom.studentIds || []).some(
+      (idValue) => idValue.toString() === studentId.toString()
+    );
+
+    if (!isEnrolled) {
+      return res.status(404).json({ message: 'Student is not in this classroom' });
+    }
+
+    classroom.studentIds = (classroom.studentIds || []).filter(
+      (idValue) => idValue.toString() !== studentId.toString()
+    );
+
+    await classroom.save();
+
+    return res.json({ message: 'Student removed from classroom successfully' });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+};
+
 // UPDATE classroom
 exports.updateClassroom = async (req, res) => {
   try {

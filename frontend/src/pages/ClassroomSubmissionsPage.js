@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import jsPDF from 'jspdf';
 import { useAuth } from '../context/AuthContext';
 import {
   getClassroom,
@@ -14,6 +15,9 @@ import logo from '../images/image.png';
 
 const PAGE_SIZE = 10;
 const FETCH_LIMIT = 50;
+const CHART_WIDTH = 150;
+const CHART_HEIGHT = 70;
+const CHART_BINS = 5;
 
 const ClassroomSubmissionsPage = () => {
   const { classroomId } = useParams();
@@ -124,6 +128,71 @@ const ClassroomSubmissionsPage = () => {
     return grouped;
   }, [paginatedSubmissions]);
 
+  const assignmentReports = useMemo(() => {
+    const grouped = {};
+
+    submissions.forEach((submission) => {
+      const assignment = submission.assignmentId || {};
+      const assignmentId = assignment._id || 'unknown-assignment';
+      const assignmentTitle = assignment.title || 'Assignment';
+      const totalPoints = Number(assignment.totalPoints || 0);
+      const studentKey =
+        submission.studentId?._id ||
+        `name:${String(submission.studentName || 'Student').trim().toLowerCase()}`;
+      const studentName = submission.studentId?.name || submission.studentName || 'Student';
+      const submittedAt = submission.submittedAt ? new Date(submission.submittedAt) : new Date(0);
+
+      if (!grouped[assignmentId]) {
+        grouped[assignmentId] = {
+          assignmentId,
+          title: assignmentTitle,
+          totalPoints,
+          students: {},
+        };
+      }
+
+      const currentEntry = grouped[assignmentId].students[studentKey];
+      if (!currentEntry || submittedAt > currentEntry.submittedAt) {
+        grouped[assignmentId].students[studentKey] = {
+          studentName,
+          email: submission.studentId?.email || '',
+          grade:
+            typeof submission.grade === 'number' && Number.isFinite(submission.grade)
+              ? submission.grade
+              : null,
+          submittedAt,
+        };
+      }
+    });
+
+    return Object.values(grouped)
+      .map((group) => {
+        const rows = Object.values(group.students).sort((a, b) =>
+          a.studentName.localeCompare(b.studentName)
+        );
+        const gradedRows = rows.filter((row) => typeof row.grade === 'number');
+        const grades = gradedRows.map((row) => row.grade);
+        const average =
+          grades.length > 0
+            ? grades.reduce((sum, value) => sum + value, 0) / grades.length
+            : null;
+        const highest = grades.length > 0 ? Math.max(...grades) : null;
+        const lowest = grades.length > 0 ? Math.min(...grades) : null;
+
+        return {
+          assignmentId: group.assignmentId,
+          title: group.title,
+          totalPoints: group.totalPoints,
+          rows,
+          grades,
+          average,
+          highest,
+          lowest,
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [submissions]);
+
   const studentProgress = useMemo(() => {
     const grouped = {};
     submissions.forEach((s) => {
@@ -175,6 +244,132 @@ const ClassroomSubmissionsPage = () => {
       return `${x},${y}`;
     });
     return `M ${points.join(' L ')}`;
+  };
+
+  const buildHistogram = (grades, totalPoints) => {
+    const safeMax = Math.max(Number(totalPoints) || 0, ...grades, 1);
+    const bins = Array.from({ length: CHART_BINS }, (_, index) => ({
+      labelStart: (safeMax / CHART_BINS) * index,
+      labelEnd: (safeMax / CHART_BINS) * (index + 1),
+      count: 0,
+    }));
+
+    grades.forEach((grade) => {
+      const rawIndex = Math.floor((grade / safeMax) * CHART_BINS);
+      const binIndex = Math.min(CHART_BINS - 1, Math.max(0, rawIndex));
+      bins[binIndex].count += 1;
+    });
+
+    return bins;
+  };
+
+  const exportAssignmentReport = (report) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 16;
+    let cursorY = 18;
+
+    const rows = report.rows || [];
+    const gradedRows = rows.filter((row) => typeof row.grade === 'number');
+    const histogram = buildHistogram(report.grades, report.totalPoints);
+    const maxCount = Math.max(1, ...histogram.map((bin) => bin.count));
+    const chartX = margin;
+    const chartY = 58;
+
+    doc.setFillColor(15, 118, 110);
+    doc.roundedRect(margin, 12, pageWidth - margin * 2, 22, 4, 4, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.text('Assignment Grade Report', margin + 6, 24);
+    doc.setFontSize(10);
+    doc.text(classroom?.name || 'Classroom', margin + 6, 30);
+
+    doc.setTextColor(15, 23, 42);
+    cursorY = 44;
+    doc.setFontSize(14);
+    doc.text(report.title || 'Assignment', margin, cursorY);
+    cursorY += 7;
+    doc.setFontSize(10);
+    doc.text(`Total points: ${report.totalPoints || 0}`, margin, cursorY);
+    doc.text(`Students: ${rows.length}`, margin + 55, cursorY);
+    doc.text(`Graded: ${gradedRows.length}`, margin + 90, cursorY);
+    cursorY += 8;
+    doc.text(
+      `Average: ${report.average != null ? report.average.toFixed(2) : 'N/A'}`,
+      margin,
+      cursorY
+    );
+    doc.text(`Highest: ${report.highest ?? 'N/A'}`, margin + 55, cursorY);
+    doc.text(`Lowest: ${report.lowest ?? 'N/A'}`, margin + 90, cursorY);
+
+    doc.setFontSize(12);
+    doc.text('Grade Distribution', chartX, chartY - 6);
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(chartX, chartY, CHART_WIDTH, CHART_HEIGHT);
+
+    const barWidth = CHART_WIDTH / histogram.length - 6;
+    histogram.forEach((bin, index) => {
+      const barHeight = (bin.count / maxCount) * (CHART_HEIGHT - 18);
+      const x = chartX + 6 + index * (barWidth + 6);
+      const y = chartY + CHART_HEIGHT - barHeight - 10;
+      doc.setFillColor(16, 185, 129);
+      doc.rect(x, y, barWidth, barHeight, 'F');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(String(bin.count), x + barWidth / 2, y - 2, { align: 'center' });
+      const label = `${Math.round(bin.labelStart)}-${Math.round(bin.labelEnd)}`;
+      doc.text(label, x + barWidth / 2, chartY + CHART_HEIGHT - 3, { align: 'center' });
+    });
+
+    cursorY = chartY + CHART_HEIGHT + 16;
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(12);
+    doc.text('Student Marks', margin, cursorY);
+    cursorY += 8;
+
+    const drawTableHeader = () => {
+      doc.setFillColor(241, 245, 249);
+      doc.rect(margin, cursorY, pageWidth - margin * 2, 8, 'F');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Student', margin + 2, cursorY + 5.5);
+      doc.text('Email', margin + 70, cursorY + 5.5);
+      doc.text('Grade', pageWidth - 38, cursorY + 5.5);
+      cursorY += 10;
+    };
+
+    drawTableHeader();
+
+    rows.forEach((row) => {
+      if (cursorY > pageHeight - 18) {
+        doc.addPage();
+        cursorY = 18;
+        drawTableHeader();
+      }
+
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      const studentName = doc.splitTextToSize(row.studentName || 'Student', 60);
+      const email = doc.splitTextToSize(row.email || '-', 55);
+      const lineHeight = Math.max(studentName.length, email.length, 1) * 5;
+      doc.text(studentName, margin + 2, cursorY + 4);
+      doc.text(email, margin + 70, cursorY + 4);
+      doc.text(
+        row.grade != null ? `${row.grade}/${report.totalPoints || 0}` : 'N/A',
+        pageWidth - 38,
+        cursorY + 4
+      );
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin, cursorY + lineHeight + 1, pageWidth - margin, cursorY + lineHeight + 1);
+      cursorY += lineHeight + 4;
+    });
+
+    const safeTitle = String(report.title || 'assignment-report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    doc.save(`${safeTitle || 'assignment-report'}.pdf`);
   };
 
   const toggleFeedback = (id) => {
@@ -441,6 +636,55 @@ const ClassroomSubmissionsPage = () => {
                   ))}
                 </div>
               )}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                    Reports
+                  </p>
+                  <h3 className="text-2xl font-bold text-slate-900">
+                    Assignment grade reports
+                  </h3>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
+                  {assignmentReports.length} assignments
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {assignmentReports.map((report) => (
+                  <div
+                    key={report.assignmentId}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{report.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {report.rows.length} students, average{' '}
+                          {report.average != null ? report.average.toFixed(2) : 'N/A'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => exportAssignmentReport(report)}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                      >
+                        Export PDF
+                      </button>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+                      <span className="rounded-full bg-white px-3 py-1">
+                        Highest: {report.highest ?? 'N/A'}
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1">
+                        Lowest: {report.lowest ?? 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </section>
 
             {Object.keys(groupedSubmissions).map((title) => (

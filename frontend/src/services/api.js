@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL ||
+  (process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '/api');
+
 const API = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
 });
 
 API.interceptors.request.use((config) => {
@@ -95,6 +99,12 @@ export const registerAssistant = (data) =>
 export const loginUser = (data) =>
   API.post('/users/login', data);
 
+export const forgotPassword = (data) =>
+  API.post('/users/forgot-password', data);
+
+export const resetPassword = (data) =>
+  API.post('/users/reset-password', data);
+
 // EXISTING APIs (keep these so nothing breaks)
 
 export const createUser = (data) =>
@@ -114,6 +124,9 @@ export const getClassroom = (id) =>
 
 export const getClassroomStudents = (id) =>
   fetchAllPages(`/classrooms/${id}/students`);
+
+export const removeClassroomStudent = (classroomId, studentId) =>
+  API.delete(`/classrooms/${classroomId}/students/${studentId}`);
 export const getUsers = () =>
   fetchAllPages('/users');
 
@@ -145,6 +158,9 @@ export const getTeacherAssistants = (teacherId) =>
 
 export const getTeacherAssistantCode = (teacherId) =>
   API.get(`/users/teachers/${teacherId}/assistant-code`);
+
+export const removeTeacherAssistant = (teacherId, assistantId) =>
+  API.delete(`/users/teachers/${teacherId}/assistants/${assistantId}`);
 
 export const createAssignment = (formData) =>
   API.post('/assignments', formData, {

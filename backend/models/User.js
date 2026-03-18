@@ -20,6 +20,16 @@ const userSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
+    passwordResetTokenHash: {
+      type: String,
+      select: false,
+      default: null,
+    },
+    passwordResetExpiresAt: {
+      type: Date,
+      select: false,
+      default: null,
+    },
     role: {
       type: String,
       enum: ['ADMIN', 'TEACHER', 'ASSISTANT', 'STUDENT'],

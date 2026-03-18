@@ -6,6 +6,7 @@ import {
   createClassroom,
   getTeacherAssistants,
   getTeacherAssistantCode,
+  removeTeacherAssistant,
 } from '../services/api';
 import CreateClassroomModal from '../components/CreateClassroomModal';
 import logo from '../images/image.png';
@@ -19,6 +20,9 @@ const TeacherDashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const [assistantCode, setAssistantCode] = useState('');
   const [loadingAssistantCode, setLoadingAssistantCode] = useState(false);
+  const [assistantActionMessage, setAssistantActionMessage] = useState('');
+  const [assistantActionError, setAssistantActionError] = useState('');
+  const [removingAssistantId, setRemovingAssistantId] = useState('');
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { t } = useI18n();
@@ -76,8 +80,10 @@ const TeacherDashboard = () => {
     try {
       const response = await getTeacherAssistants(teacherId);
       setAssistants(response.data);
+      setAssistantActionError('');
     } catch (err) {
       console.error('Failed to load assistants:', err);
+      setAssistantActionError('Failed to load assistants.');
     }
   }, [teacherId]);
 
@@ -118,6 +124,28 @@ const TeacherDashboard = () => {
       setError('Failed to load teacher assistant code');
     } finally {
       setLoadingAssistantCode(false);
+    }
+  };
+
+  const handleRemoveAssistant = async (assistant) => {
+    const confirmed = window.confirm(t('teacher.removeAssistantConfirm'));
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setRemovingAssistantId(assistant._id);
+      setAssistantActionMessage('');
+      setAssistantActionError('');
+      await removeTeacherAssistant(teacherId, assistant._id);
+      setAssistants((prev) => prev.filter((item) => item._id !== assistant._id));
+      setAssistantActionMessage(t('teacher.removeAssistantSuccess'));
+    } catch (err) {
+      setAssistantActionError(
+        err.response?.data?.message || t('teacher.removeAssistantFailed')
+      );
+    } finally {
+      setRemovingAssistantId('');
     }
   };
 
@@ -243,6 +271,16 @@ const TeacherDashboard = () => {
             <p className="mt-3 text-sm text-slate-600">
               Share your assistant code to invite help with grading and feedback.
             </p>
+            {assistantActionMessage && (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                {assistantActionMessage}
+              </div>
+            )}
+            {assistantActionError && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {assistantActionError}
+              </div>
+            )}
             <div className="mt-4">
               <button
                 onClick={handleViewAssistantCode}
@@ -277,6 +315,16 @@ const TeacherDashboard = () => {
                         {assistant.email}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAssistant(assistant)}
+                      disabled={removingAssistantId === assistant._id}
+                      className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {removingAssistantId === assistant._id
+                        ? t('common.loading')
+                        : t('common.remove')}
+                    </button>
                   </div>
                 ))}
               </div>

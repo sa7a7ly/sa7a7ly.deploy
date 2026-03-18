@@ -13,6 +13,8 @@ import logo from '../images/image.png';
 import arabicEssayPdfLogo from '../images/ms_Eman_logo.jpeg';
 import { useI18n } from '../context/I18nContext';
 
+const MAX_SUBMISSION_PDF_SIZE_BYTES = 10 * 1024 * 1024;
+
 const countArabicChars = (value) =>
   (String(value || '').match(/[\u0600-\u06FF]/g) || []).length;
 
@@ -175,12 +177,15 @@ const SubmitAssignmentPage = () => {
   const [pdf, setPdf] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorTitle, setErrorTitle] = useState('');
+  const [fileError, setFileError] = useState('');
   const [result, setResult] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [timeOffsetMs, setTimeOffsetMs] = useState(0);
   const [resubmissionRequest, setResubmissionRequest] = useState(null);
   const [resubmitReason, setResubmitReason] = useState('');
+  const [resubmitError, setResubmitError] = useState('');
   const [requestingResubmit, setRequestingResubmit] = useState(false);
   const [existingSubmission, setExistingSubmission] = useState(null);
   const [activeSubmissionId, setActiveSubmissionId] = useState(null);
@@ -258,10 +263,16 @@ const SubmitAssignmentPage = () => {
         } else if (submission && status === 'DONE' && !isResultVisible) {
           setResult(null);
           setInfoMessage(getHiddenResultMessage(nextPolicy));
-        } else if (submission && (status === 'QUEUED' || status === 'GRADING')) {
+        } else if (
+          submission &&
+          (status === 'QUEUED' || status === 'PROCESSING' || status === 'GRADING')
+        ) {
           setResult(null);
           setInfoMessage('');
-        } else if (submission && status === 'FAILED') {
+        } else if (
+          submission &&
+          (status === 'FAILED' || status === 'FAILED_PERMANENT')
+        ) {
           setResult(null);
           setInfoMessage('');
         }
@@ -327,7 +338,7 @@ const SubmitAssignmentPage = () => {
           return;
         }
 
-        if (status === 'FAILED') {
+        if (status === 'FAILED' || status === 'FAILED_PERMANENT') {
           setResult(null);
           if (intervalId) {
             clearInterval(intervalId);
@@ -404,17 +415,78 @@ const SubmitAssignmentPage = () => {
     };
   }, []);
 
+  const clearSubmissionErrors = () => {
+    setError('');
+    setErrorTitle('');
+    setFileError('');
+  };
+
+  const mapSubmitError = (err) => {
+    if (!err?.response) {
+      return {
+        title: t('submit.issueTitle'),
+        message: t('submitErrors.network'),
+      };
+    }
+
+    const status = Number(err.response.status);
+    const serverMessage = String(err.response?.data?.message || '');
+    const normalizedMessage = serverMessage.toLowerCase();
+
+    if (normalizedMessage.includes('student pdf missing')) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.pdfRequired') };
+    }
+    if (normalizedMessage.includes('invalid pdf upload')) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.uploadInvalid') };
+    }
+    if (normalizedMessage.includes('assignment not found')) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.assignmentNotFound') };
+    }
+    if (normalizedMessage.includes('submission is closed')) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.closed') };
+    }
+    if (normalizedMessage.includes('only students can submit')) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.notAllowed') };
+    }
+
+    if (status === 403) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.notAllowed') };
+    }
+    if (status === 404) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.assignmentNotFound') };
+    }
+    if (status >= 500) {
+      return { title: t('submit.issueTitle'), message: t('submitErrors.server') };
+    }
+
+    return {
+      title: t('submit.issueTitle'),
+      message: serverMessage || t('submitErrors.submitFailed'),
+    };
+  };
+
   const validateAndSetPdf = (file) => {
     if (!file) {
+      setPdf(null);
       return;
     }
-    if (file.type === 'application/pdf') {
-      setPdf(file);
-      setError('');
+
+    if (file.type !== 'application/pdf') {
+      setPdf(null);
+      setFileError(t('submitErrors.pdfOnly'));
       return;
     }
-    setPdf(null);
-    setError(t('common.uploadPdf'));
+
+    if (file.size > MAX_SUBMISSION_PDF_SIZE_BYTES) {
+      setPdf(null);
+      setFileError(t('submitErrors.pdfTooLarge'));
+      return;
+    }
+
+    setPdf(file);
+    setFileError('');
+    setError('');
+    setErrorTitle('');
   };
 
   const getHiddenResultMessage = (policy) => {
@@ -438,12 +510,14 @@ const SubmitAssignmentPage = () => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
+    clearSubmissionErrors();
 
     const files = e.dataTransfer.files;
     validateAndSetPdf(files && files[0] ? files[0] : null);
   };
 
   const handleFileChange = (e) => {
+    clearSubmissionErrors();
     validateAndSetPdf(e.target.files[0]);
   };
 
@@ -452,12 +526,24 @@ const SubmitAssignmentPage = () => {
     if (loading) {
       return;
     }
+    clearSubmissionErrors();
     if (!pdf) {
-      setError(t('common.uploadPdf'));
+      setFileError(t('submitErrors.pdfRequired'));
       return;
     }
 
-    setError('');
+    if (isPastDue) {
+      setErrorTitle(t('submit.issueTitle'));
+      setError(t('submitErrors.closed'));
+      return;
+    }
+
+    if (!canSubmit) {
+      setErrorTitle(t('submit.issueTitle'));
+      setError(t('submitErrors.alreadySubmitted'));
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -470,7 +556,7 @@ const SubmitAssignmentPage = () => {
       const payload = response.data?.submission ? response.data : { submission: response.data };
       const submission = payload.submission || null;
       const nextId = submission?._id || null;
-      setInfoMessage('Saved successfully.');
+      setInfoMessage(t('submit.submitted'));
       setResult(null);
       setResubmissionRequest(payload.resubmissionRequest || null);
       setExistingSubmission(submission);
@@ -481,7 +567,9 @@ const SubmitAssignmentPage = () => {
         navigate(`/submit-assignment/${assignmentId}?submissionId=${nextId}`, { replace: true });
       }
     } catch (err) {
-      setError(err.response?.data?.message || t('errors.failedSubmitAssignment'));
+      const mapped = mapSubmitError(err);
+      setErrorTitle(mapped.title);
+      setError(mapped.message);
     } finally {
       setLoading(false);
     }
@@ -501,8 +589,12 @@ const SubmitAssignmentPage = () => {
     (!existingSubmission ||
       (resubmissionRequest?.status === 'APPROVED' && !resubmissionRequest.used));
   const normalizedStatus = submissionStatus || existingSubmission?.status || null;
-  const isBeingGraded = normalizedStatus === 'QUEUED' || normalizedStatus === 'GRADING';
-  const isFailed = normalizedStatus === 'FAILED';
+  const isBeingGraded =
+    normalizedStatus === 'QUEUED' ||
+    normalizedStatus === 'PROCESSING' ||
+    normalizedStatus === 'GRADING';
+  const isFailed =
+    normalizedStatus === 'FAILED' || normalizedStatus === 'FAILED_PERMANENT';
   const doneButHidden =
     normalizedStatus === 'DONE' &&
     existingSubmission &&
@@ -512,11 +604,13 @@ const SubmitAssignmentPage = () => {
 
   const handleRequestResubmission = async () => {
     if (!resubmitReason.trim()) {
-      setError(t('submit.requestResubmit'));
+      setResubmitError(t('submitErrors.requestReasonRequired'));
       return;
     }
     setRequestingResubmit(true);
+    setResubmitError('');
     setError('');
+    setErrorTitle('');
     try {
       const response = await createResubmissionRequest({
         assignmentId,
@@ -527,7 +621,9 @@ const SubmitAssignmentPage = () => {
       setResubmitReason('');
       setInfoMessage(t('submit.resubmitPending'));
     } catch (err) {
-      setError(err.response?.data?.message || t('errors.failedRequestResubmit'));
+      setResubmitError(
+        err.response?.data?.message || t('submitErrors.requestFailed')
+      );
     } finally {
       setRequestingResubmit(false);
     }
@@ -1193,23 +1289,23 @@ const SubmitAssignmentPage = () => {
             <div className="absolute -left-20 -bottom-20 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl" />
             <div className="relative">
               <div className="mb-5 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">
-                Submission Received
+                {t('submit.processingBadge')}
               </div>
               <div className="mb-6 flex items-center gap-4">
                 <div className="h-11 w-11 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
                     {visibilityPolicy === 'AFTER_REVIEW'
-                      ? 'We are taking care of your assignment, you can leave now'
-                      : 'We are grading your submission'}
+                      ? t('submit.processingTitleAfterReview')
+                      : t('submit.processingTitle')}
                   </h2>
                   <p className="mt-1 text-sm font-semibold text-emerald-700">
-                    Your assignment is received successfully.
+                    {t('submit.processingSuccess')}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
                     {visibilityPolicy === 'AFTER_REVIEW'
-                      ? 'Assistant and teacher review is in progress. You can leave now.'
-                      : 'You can stay on this page or leave it. Grading will continue in the background.'}
+                      ? t('submit.processingBodyAfterReview')
+                      : t('submit.processingBody')}
                   </p>
                 </div>
               </div>
@@ -1225,7 +1321,9 @@ const SubmitAssignmentPage = () => {
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                     Status
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-emerald-700">In Progress</p>
+                  <p className="mt-2 text-sm font-semibold text-emerald-700">
+                    {t('submit.processingStatus')}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -1234,7 +1332,7 @@ const SubmitAssignmentPage = () => {
                   <p className="mt-2 text-sm font-semibold text-slate-800">
                     {existingSubmission?.submittedAt
                       ? new Date(existingSubmission.submittedAt).toLocaleString()
-                      : 'Just now'}
+                      : t('submit.processingJustNow')}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -1242,7 +1340,9 @@ const SubmitAssignmentPage = () => {
                     Visibility
                   </p>
                   <p className="mt-2 text-sm font-semibold text-slate-800">
-                    {visibilityPolicy === 'AFTER_REVIEW' ? 'After review' : 'After deadline'}
+                    {visibilityPolicy === 'AFTER_REVIEW'
+                      ? t('submit.processingVisibilityAfterReview')
+                      : t('submit.processingVisibilityAfterDeadline')}
                   </p>
                 </div>
               </div>
@@ -1406,24 +1506,64 @@ const SubmitAssignmentPage = () => {
         </nav>
 
         <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900">{t('submit.resultTitle')}</h2>
-                <p className="mt-1 text-sm text-slate-600">{t('submit.gradedByAi')}</p>
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-800 px-6 py-6 text-white sm:px-8">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-200">
+                      Sa7a7ly
+                    </p>
+                    <h2 className="mt-3 text-3xl font-bold">
+                      {assignment?.title || t('submit.resultTitle')}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-200">
+                      {t('submit.gradedByAi')}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
+                      {t('submit.grade')}
+                    </p>
+                    <p className="mt-2 text-3xl font-bold text-white">
+                      {result.grade}
+                      {assignment?.totalPoints != null ? ` / ${assignment.totalPoints}` : ''}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-right">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
-                  {t('submit.grade')}
-                </p>
-                <p className="text-2xl font-bold text-emerald-700">
-                  {result.grade}
-                  {assignment?.totalPoints != null ? ` / ${assignment.totalPoints}` : ''}
-                </p>
+
+              <div className="grid gap-4 border-t border-slate-200 bg-slate-50 px-6 py-5 sm:grid-cols-3 sm:px-8">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {t('common.due')}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {formatDateTime(assignment?.dueDate)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {t('common.timeLeft')}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {getTimeLeft(assignment?.dueDate)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {t('submit.feedback')}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {feedbackSections.questions.length > 0
+                      ? `${feedbackSections.questions.length} question items`
+                      : 'Feedback summary available'}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.35fr]">
+            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.45fr]">
               <div className="space-y-4">
                 {infoMessage && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
@@ -1431,9 +1571,14 @@ const SubmitAssignmentPage = () => {
                   </div>
                 )}
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  <p>{t('common.due')}: {formatDateTime(assignment?.dueDate)}</p>
-                  <p>{t('common.timeLeft')}: {getTimeLeft(assignment?.dueDate)}</p>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {t('submit.resultTitle')}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    Review your grade, read the feedback breakdown, download the PDF report, or
+                    request another attempt if you need to improve your submission.
+                  </p>
                 </div>
 
                 {resubmissionRequest?.status === 'PENDING' && (
@@ -1452,21 +1597,64 @@ const SubmitAssignmentPage = () => {
                   </div>
                 )}
 
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Actions
+                  </p>
+                  <div className="mt-4 grid gap-3">
+                    {resubmissionRequest?.status === 'APPROVED' &&
+                      !resubmissionRequest.used && (
+                        <button
+                          onClick={() => {
+                            setResult(null);
+                            setInfoMessage('');
+                          }}
+                          className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-left font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          {t('submit.submitNewVersion')}
+                        </button>
+                      )}
+                    <button
+                      onClick={handleDownloadFeedback}
+                      className="rounded-xl bg-slate-900 px-4 py-3 text-left font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      {t('common.downloadPdf')}
+                    </button>
+                    <button
+                      onClick={() => navigate(-1)}
+                      className="rounded-xl bg-emerald-600 px-4 py-3 text-left font-semibold text-white transition hover:bg-emerald-700"
+                    >
+                      {t('common.back')}
+                    </button>
+                  </div>
+                </div>
+
                 {(!resubmissionRequest ||
                   resubmissionRequest.status === 'DECLINED' ||
                   (resubmissionRequest.status === 'APPROVED' &&
                     resubmissionRequest.used)) && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                       {t('submit.requestResubmit')}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Explain what you want to improve or why you need another chance to submit.
                     </p>
                     <textarea
                       value={resubmitReason}
-                      onChange={(e) => setResubmitReason(e.target.value)}
+                      onChange={(e) => {
+                        setResubmitReason(e.target.value);
+                        if (resubmitError) setResubmitError('');
+                      }}
                       rows={4}
                       className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder={t('submit.requestReasonPlaceholder')}
                     />
+                    {resubmitError && (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {resubmitError}
+                      </div>
+                    )}
                     <button
                       onClick={handleRequestResubmission}
                       disabled={requestingResubmit}
@@ -1476,107 +1664,70 @@ const SubmitAssignmentPage = () => {
                     </button>
                   </div>
                 )}
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {resubmissionRequest?.status === 'APPROVED' &&
-                    !resubmissionRequest.used && (
-                      <button
-                        onClick={() => {
-                          setResult(null);
-                          setInfoMessage('');
-                        }}
-                        className="px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-semibold"
-                      >
-                        {t('submit.submitNewVersion')}
-                      </button>
-                    )}
-                  <button
-                    onClick={handleDownloadFeedback}
-                    className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition font-semibold"
-                  >
-                    {t('common.downloadPdf')}
-                  </button>
-                  <button
-                    onClick={() => navigate(-1)}
-                    className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold"
-                  >
-                    {t('common.back')}
-                  </button>
-                </div>
               </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-700">{t('submit.feedback')}</p>
-                {feedbackSections.questions.length > 0 && (
-                  <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-700">
-                      Questions Feedback
+              <div className="space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 px-5 py-4 text-white">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                      Raw Feedback
                     </p>
-                    <div className="mt-2 space-y-2">
-                      {feedbackSections.questions.map((q) => (
-                        <div
-                          key={`${q.questionNumber}-${q.reason}`}
-                          className="rounded-lg border border-indigo-100 bg-white p-3"
-                        >
-                          <p className="text-sm font-semibold text-slate-900">{q.questionNumber}</p>
-                          <p className="mt-1 text-xs text-slate-700">
-                            Max: <span className="font-semibold">{q.maxMarks}</span> | Your Marks:{' '}
-                            <span className="font-semibold">{q.studentMarks}</span> | Lost:{' '}
-                            <span className="font-semibold">{q.marksLost}</span>
-                          </p>
-                          <p className="mt-1 text-sm text-slate-700">
-                            {q.reason || 'No reason provided.'}
-                          </p>
-                        </div>
-                      ))}
+                    <h4 className="mt-2 text-xl font-bold">Complete Feedback</h4>
+                    <p className="mt-1 text-sm leading-6 text-slate-200">
+                      This is the full feedback exactly as generated for your submission.
+                    </p>
+                  </div>
+                  <div className="px-5 py-5">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                        {feedbackSections.raw || 'No feedback provided.'}
+                      </p>
                     </div>
                   </div>
-                )}
-                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-sky-700">
+                </div>
+
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
                     Summary
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                     {feedbackSections.summary || 'No summary provided.'}
                   </p>
                 </div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">
+
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
                     Mistakes
                   </p>
                   {feedbackSections.mistakes.length > 0 ? (
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
                       {feedbackSections.mistakes.map((item, idx) => (
                         <li key={`${idx}-${item}`}>{item}</li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-1 text-sm leading-6 text-slate-700">No major mistakes listed.</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      No major mistakes listed.
+                    </p>
                   )}
                 </div>
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">
+
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
                     Improvement Advice
                   </p>
                   {feedbackSections.improvements.length > 0 ? (
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
                       {feedbackSections.improvements.map((item, idx) => (
                         <li key={`${idx}-${item}`}>{item}</li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-1 text-sm leading-6 text-slate-700">No improvement advice listed.</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      No improvement advice listed.
+                    </p>
                   )}
                 </div>
-                {!feedbackSections.summary &&
-                  feedbackSections.mistakes.length === 0 &&
-                  feedbackSections.improvements.length === 0 && (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                        {feedbackSections.raw || 'No feedback provided.'}
-                      </p>
-                    </div>
-                  )}
               </div>
             </div>
           </div>
@@ -1712,7 +1863,12 @@ const SubmitAssignmentPage = () => {
           )}
           {!isPastDue && !canSubmit && (
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
-              {t('submit.requestResubmit')}
+              {t('submitErrors.alreadySubmitted')}
+            </div>
+          )}
+          {isFailed && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              {t('submitErrors.lastSubmissionFailed')}
             </div>
           )}
           <form onSubmit={handleSubmit}>
@@ -1736,7 +1892,7 @@ const SubmitAssignmentPage = () => {
               <p className="text-lg font-semibold text-slate-900 mb-2">
                 {t('classroom.submitAssignment')}
               </p>
-              <p className="text-slate-600 mb-4">{t('common.view')}</p>
+              <p className="text-slate-600 mb-4">{t('submit.uploadHint')}</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1749,14 +1905,25 @@ const SubmitAssignmentPage = () => {
 
             {pdf && (
               <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <p className="text-emerald-700 font-semibold">{t('common.view')}</p>
+                <p className="text-emerald-700 font-semibold">{t('submit.fileReadyTitle')}</p>
                 <p className="text-slate-700">{pdf.name}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {(pdf.size / (1024 * 1024)).toFixed(2)} MB
+                </p>
+              </div>
+            )}
+
+            {fileError && (
+              <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                <p className="font-semibold">{t('submit.issueTitle')}</p>
+                <p className="mt-1">{fileError}</p>
               </div>
             )}
 
             {error && (
               <div className="mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
-                {error}
+                <p className="font-semibold">{errorTitle || t('submit.issueTitle')}</p>
+                <p className="mt-1">{error}</p>
               </div>
             )}
 

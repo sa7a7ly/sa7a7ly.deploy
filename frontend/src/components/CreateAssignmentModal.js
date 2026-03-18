@@ -12,7 +12,48 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
     gradingProfile: 'GENERAL',
   });
   const [loading, setLoading] = useState(false);
+  const [formNotice, setFormNotice] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const { t } = useI18n();
+
+  const getInputClassName = (hasError) =>
+    `w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition ${
+      hasError
+        ? 'border-red-400 bg-red-50/70 focus:ring-red-500'
+        : 'border-slate-300 focus:ring-emerald-500'
+    }`;
+
+  const validateForm = () => {
+    const nextErrors = {};
+    const title = formData.title.trim();
+    const totalPoints = Number(formData.totalPoints);
+    const requiresDueDate = formData.resultVisibility === 'AFTER_DEADLINE';
+
+    if (!title) {
+      nextErrors.title = t('createAssignmentErrors.titleRequired');
+    }
+
+    if (formData.totalPoints === '') {
+      nextErrors.totalPoints = t('createAssignmentErrors.totalPointsRequired');
+    } else if (!Number.isFinite(totalPoints) || totalPoints <= 0) {
+      nextErrors.totalPoints = t('createAssignmentErrors.totalPointsInvalid');
+    }
+
+    if (requiresDueDate && !formData.dueDate) {
+      nextErrors.dueDate = t('createAssignmentErrors.dueDateRequired');
+    }
+
+    if (!formData.pdf) {
+      nextErrors.pdf = t('createAssignmentErrors.modelAnswerRequired');
+    }
+
+    setFieldErrors(nextErrors);
+    setFormNotice(
+      Object.keys(nextErrors).length > 0 ? t('authErrors.missingFields') : ''
+    );
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -20,6 +61,12 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
       ...prev,
       [name]: value,
     }));
+    setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    if (name === 'resultVisibility' && value !== 'AFTER_DEADLINE') {
+      setFieldErrors((prev) => ({ ...prev, dueDate: '' }));
+    }
+    if (formNotice) setFormNotice('');
+    if (submitError) setSubmitError('');
   };
 
   const handleFileChange = (e) => {
@@ -27,15 +74,23 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
       ...prev,
       pdf: e.target.files[0],
     }));
+    setFieldErrors((prev) => ({ ...prev, pdf: '' }));
+    if (formNotice) setFormNotice('');
+    if (submitError) setSubmitError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError('');
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
 
     const formDataToSend = new FormData();
-    formDataToSend.append('title', formData.title);
-    formDataToSend.append('description', formData.description);
+    formDataToSend.append('title', formData.title.trim());
+    formDataToSend.append('description', formData.description.trim());
     formDataToSend.append('totalPoints', formData.totalPoints);
     formDataToSend.append('classroomId', classroomId);
     formDataToSend.append('createdBy', userId);
@@ -50,6 +105,12 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
 
     try {
       await onCreate(formDataToSend);
+      setFieldErrors({});
+      setFormNotice('');
+    } catch (err) {
+      setSubmitError(
+        err?.response?.data?.message || t('createAssignmentErrors.createFailed')
+      );
     } finally {
       setLoading(false);
     }
@@ -76,20 +137,37 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto px-6 py-6 space-y-5">
+        <form onSubmit={handleSubmit} className="overflow-y-auto px-6 py-6 space-y-5" noValidate>
+          {formNotice && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-semibold">{t('auth.validationTitle')}</p>
+              <p className="mt-1">{formNotice}</p>
+            </div>
+          )}
+
+          {submitError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p className="font-semibold">{t('createAssignment.issueTitle')}</p>
+              <p className="mt-1">{submitError}</p>
+            </div>
+          )}
+
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              {t('common.title')}
+              {t('common.title')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               name="title"
               value={formData.title}
               onChange={handleChange}
-              required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={getInputClassName(Boolean(fieldErrors.title))}
               placeholder={t('createAssignment.titlePlaceholder')}
+              aria-invalid={Boolean(fieldErrors.title)}
             />
+            {fieldErrors.title && (
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.title}</p>
+            )}
           </div>
 
           <div>
@@ -100,7 +178,7 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
               name="description"
               value={formData.description}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={getInputClassName(Boolean(fieldErrors.description))}
               placeholder={t('createAssignment.descriptionPlaceholder')}
               rows="3"
             />
@@ -111,33 +189,44 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              {t('createAssignment.totalPoints')}
+              {t('createAssignment.totalPoints')} <span className="text-red-500">*</span>
             </label>
             <input
               type="number"
               name="totalPoints"
               value={formData.totalPoints}
               onChange={handleChange}
-              required
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={getInputClassName(Boolean(fieldErrors.totalPoints))}
               placeholder="100"
+              min="1"
+              aria-invalid={Boolean(fieldErrors.totalPoints)}
             />
+            {fieldErrors.totalPoints && (
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.totalPoints}</p>
+            )}
           </div>
 
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
               {t('createAssignment.dueDate')}
+              {formData.resultVisibility === 'AFTER_DEADLINE' ? (
+                <span className="text-red-500"> *</span>
+              ) : null}
             </label>
             <input
               type="datetime-local"
               name="dueDate"
               value={formData.dueDate}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={getInputClassName(Boolean(fieldErrors.dueDate))}
+              aria-invalid={Boolean(fieldErrors.dueDate)}
             />
             <p className="mt-2 text-sm text-slate-500">
               {t('createAssignment.dueDateHelp')}
             </p>
+            {fieldErrors.dueDate && (
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.dueDate}</p>
+            )}
           </div>
 
           <div>
@@ -202,6 +291,9 @@ const CreateAssignmentModal = ({ classroomId, userId, onClose, onCreate }) => {
                 {t('landing.supportBody')}
               </p>
             </div>
+            {fieldErrors.pdf && (
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.pdf}</p>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">

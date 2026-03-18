@@ -5,21 +5,77 @@ import { registerUser, registerAssistant } from '../services/api';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
 
+const PasswordEyeButton = ({ visible, onClick, label }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="absolute inset-y-0 right-3 inline-flex items-center justify-center text-slate-500 transition hover:text-emerald-700"
+    aria-label={label}
+    title={label}
+  >
+    {visible ? (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className="h-5 w-5"
+        aria-hidden="true"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58"
+        />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M9.88 5.09A9.77 9.77 0 0112 4.8c4.72 0 8.27 3.11 9.5 7.2a10.88 10.88 0 01-4.04 5.54M6.61 6.61A10.9 10.9 0 002.5 12c.54 1.8 1.57 3.44 2.95 4.72"
+        />
+      </svg>
+    ) : (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        className="h-5 w-5"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M2.5 12C3.73 7.91 7.28 4.8 12 4.8s8.27 3.11 9.5 7.2c-1.23 4.09-4.78 7.2-9.5 7.2S3.73 16.09 2.5 12z"
+        />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    )}
+  </button>
+);
+
 const RegisterPage = () => {
   const [studentFormData, setStudentFormData] = useState({
     name: '',
     email: '',
     password: '',
+    confirmPassword: '',
   });
   const [assistantFormData, setAssistantFormData] = useState({
     name: '',
     email: '',
     password: '',
+    confirmPassword: '',
     assistantCode: '',
   });
 
   const [showAssistantForm, setShowAssistantForm] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const [formNotice, setFormNotice] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -27,12 +83,23 @@ const RegisterPage = () => {
   const { t } = useI18n();
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const activeFormData = showAssistantForm ? assistantFormData : studentFormData;
+
+  const getInputClassName = (hasError) =>
+    `w-full px-4 py-2 border rounded-lg transition focus:outline-none focus:ring-2 ${
+      hasError
+        ? 'border-red-400 bg-red-50/70 focus:ring-red-500'
+        : 'border-slate-300 focus:ring-emerald-500'
+    }`;
 
   const validateStudentForm = () => {
     const nextErrors = {};
     const name = studentFormData.name.trim();
     const email = studentFormData.email.trim();
     const password = studentFormData.password;
+    const confirmPassword = studentFormData.confirmPassword;
+    const missingRequiredField =
+      !name || !email || !password || !confirmPassword;
 
     if (!name) {
       nextErrors.name = t('authErrors.nameRequired');
@@ -52,7 +119,20 @@ const RegisterPage = () => {
       nextErrors.password = t('authErrors.passwordMin');
     }
 
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = t('authErrors.confirmPasswordRequired');
+    } else if (confirmPassword !== password) {
+      nextErrors.confirmPassword = t('authErrors.passwordMismatch');
+    }
+
     setFieldErrors(nextErrors);
+    setFormNotice(
+      Object.keys(nextErrors).length > 0
+        ? missingRequiredField
+          ? t('authErrors.missingFields')
+          : t('authErrors.reviewHighlightedFields')
+        : ''
+    );
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -61,7 +141,10 @@ const RegisterPage = () => {
     const name = assistantFormData.name.trim();
     const email = assistantFormData.email.trim();
     const password = assistantFormData.password;
+    const confirmPassword = assistantFormData.confirmPassword;
     const assistantCode = assistantFormData.assistantCode.trim();
+    const missingRequiredField =
+      !name || !email || !password || !confirmPassword || !assistantCode;
 
     if (!name) {
       nextErrors.name = t('authErrors.nameRequired');
@@ -79,6 +162,12 @@ const RegisterPage = () => {
       nextErrors.password = t('authErrors.passwordRequired');
     } else if (password.length < 6) {
       nextErrors.password = t('authErrors.passwordMin');
+    }
+
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = t('authErrors.confirmPasswordRequired');
+    } else if (confirmPassword !== password) {
+      nextErrors.confirmPassword = t('authErrors.passwordMismatch');
     }
 
     if (!assistantCode) {
@@ -88,6 +177,13 @@ const RegisterPage = () => {
     }
 
     setFieldErrors(nextErrors);
+    setFormNotice(
+      Object.keys(nextErrors).length > 0
+        ? missingRequiredField
+          ? t('authErrors.missingFields')
+          : t('authErrors.reviewHighlightedFields')
+        : ''
+    );
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -143,6 +239,7 @@ const RegisterPage = () => {
       [name]: value,
     }));
     setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    if (formNotice) setFormNotice('');
     if (error) setError('');
   };
 
@@ -153,6 +250,7 @@ const RegisterPage = () => {
       [name]: name === 'assistantCode' ? value.toUpperCase() : value,
     }));
     setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    if (formNotice) setFormNotice('');
     if (error) setError('');
   };
 
@@ -163,6 +261,7 @@ const RegisterPage = () => {
     }
 
     setError('');
+    setFormNotice('');
     if (!validateStudentForm()) {
       return;
     }
@@ -191,6 +290,7 @@ const RegisterPage = () => {
     }
 
     setError('');
+    setFormNotice('');
     if (!validateAssistantForm()) {
       return;
     }
@@ -267,110 +367,132 @@ const RegisterPage = () => {
               : t('auth.registerHelpStudent')}
           </p>
 
+        {formNotice && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">{t('auth.validationTitle')}</p>
+            <p className="mt-1">{formNotice}</p>
+          </div>
+        )}
+
         {error && (
-          <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            {error}
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p className="font-semibold">{t('auth.registrationIssue')}</p>
+            <p className="mt-1">{error}</p>
           </div>
         )}
 
         <form
           onSubmit={showAssistantForm ? handleAssistantSubmit : handleStudentSubmit}
           className="mt-6 space-y-4"
+          noValidate
         >
           <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              {t('common.name')}
+            <label className="mb-2 block font-semibold text-slate-700">
+              {t('common.name')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               name="name"
-              value={showAssistantForm ? assistantFormData.name : studentFormData.name}
+              value={activeFormData.name}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
-              required
               autoComplete="name"
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                fieldErrors.name
-                  ? 'border-red-300 focus:ring-red-500'
-                  : 'border-slate-300 focus:ring-emerald-500'
-              }`}
+              className={getInputClassName(Boolean(fieldErrors.name))}
               placeholder="Your name"
               aria-invalid={Boolean(fieldErrors.name)}
             />
             {fieldErrors.name && (
-              <p className="mt-2 text-sm text-red-600">{fieldErrors.name}</p>
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.name}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              {t('common.email')}
+            <label className="mb-2 block font-semibold text-slate-700">
+              {t('common.email')} <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
               name="email"
-              value={showAssistantForm ? assistantFormData.email : studentFormData.email}
+              value={activeFormData.email}
               onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
-              required
               autoComplete="email"
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                fieldErrors.email
-                  ? 'border-red-300 focus:ring-red-500'
-                  : 'border-slate-300 focus:ring-emerald-500'
-              }`}
+              className={getInputClassName(Boolean(fieldErrors.email))}
               placeholder="your@email.com"
               aria-invalid={Boolean(fieldErrors.email)}
             />
             {fieldErrors.email && (
-              <p className="mt-2 text-sm text-red-600">{fieldErrors.email}</p>
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.email}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              {t('common.password')}
+            <label className="mb-2 block font-semibold text-slate-700">
+              {t('common.password')} <span className="text-red-500">*</span>
             </label>
-            <input
-              type="password"
-              name="password"
-              value={showAssistantForm ? assistantFormData.password : studentFormData.password}
-              onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
-              required
-              autoComplete="new-password"
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
-                fieldErrors.password
-                  ? 'border-red-300 focus:ring-red-500'
-                  : 'border-slate-300 focus:ring-emerald-500'
-              }`}
-              placeholder="••••••••"
-              aria-invalid={Boolean(fieldErrors.password)}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                value={activeFormData.password}
+                onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
+                autoComplete="new-password"
+                className={`${getInputClassName(Boolean(fieldErrors.password))} pr-20`}
+                placeholder="••••••••"
+                aria-invalid={Boolean(fieldErrors.password)}
+              />
+              <PasswordEyeButton
+                visible={showPassword}
+                onClick={() => setShowPassword((prev) => !prev)}
+                label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+              />
+            </div>
             {fieldErrors.password && (
-              <p className="mt-2 text-sm text-red-600">{fieldErrors.password}</p>
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.password}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-2 block font-semibold text-slate-700">
+              {t('auth.confirmPassword')} <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                name="confirmPassword"
+                value={activeFormData.confirmPassword}
+                onChange={showAssistantForm ? handleAssistantChange : handleStudentChange}
+                autoComplete="new-password"
+                className={`${getInputClassName(Boolean(fieldErrors.confirmPassword))} pr-20`}
+                placeholder="••••••••"
+                aria-invalid={Boolean(fieldErrors.confirmPassword)}
+              />
+              <PasswordEyeButton
+                visible={showConfirmPassword}
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                label={showConfirmPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+              />
+            </div>
+            {fieldErrors.confirmPassword && (
+              <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.confirmPassword}</p>
             )}
           </div>
 
           {showAssistantForm && (
             <div>
-              <label className="block text-slate-700 font-semibold mb-2">
-                {t('auth.assistantCode')}
+              <label className="mb-2 block font-semibold text-slate-700">
+                {t('auth.assistantCode')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 name="assistantCode"
                 value={assistantFormData.assistantCode}
                 onChange={handleAssistantChange}
-                required
                 maxLength={8}
-                className={`w-full px-4 py-2 border rounded-lg uppercase tracking-widest focus:outline-none focus:ring-2 ${
-                  fieldErrors.assistantCode
-                    ? 'border-red-300 focus:ring-red-500'
-                    : 'border-slate-300 focus:ring-emerald-500'
-                }`}
+                className={`${getInputClassName(Boolean(fieldErrors.assistantCode))} uppercase tracking-widest`}
                 placeholder="8-character code"
                 aria-invalid={Boolean(fieldErrors.assistantCode)}
               />
               {fieldErrors.assistantCode && (
-                <p className="mt-2 text-sm text-red-600">{fieldErrors.assistantCode}</p>
+                <p className="mt-2 text-sm font-medium text-red-600">{fieldErrors.assistantCode}</p>
               )}
             </div>
           )}
@@ -392,7 +514,10 @@ const RegisterPage = () => {
           type="button"
           onClick={() => {
             setShowAssistantForm((prev) => !prev);
+            setShowPassword(false);
+            setShowConfirmPassword(false);
             setError('');
+            setFormNotice('');
             setFieldErrors({});
           }}
           className="w-full mt-3 px-4 py-2 bg-white text-emerald-700 border border-emerald-600 rounded-lg font-semibold hover:bg-emerald-50 transition"

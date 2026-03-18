@@ -12,6 +12,11 @@ router.post('/', requireRole('ADMIN', 'TEACHER'), subscriptionGuard, classroomCo
 router.get('/', classroomController.getClassrooms);
 router.get('/:id', classroomController.getClassroom);
 router.get('/:id/students', classroomController.getClassroomStudents);
+router.delete(
+  '/:id/students/:studentId',
+  requireRole('ADMIN', 'TEACHER', 'ASSISTANT'),
+  classroomController.removeStudentFromClassroom
+);
 router.put('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), classroomController.updateClassroom);
 router.delete('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), classroomController.deleteClassroom);
 

@@ -151,7 +151,6 @@ const StudentDashboard = () => {
           .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0]
           ?.grade ?? null
       : null;
-
   return (
     <div className="min-h-screen bg-slate-50">
       <nav className="bg-white shadow-sm">
