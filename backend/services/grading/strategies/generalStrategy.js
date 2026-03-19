@@ -228,7 +228,7 @@ function buildFeedback(result) {
 }
 
 module.exports = {
-  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-2.5-pro",
+  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-3-pro-preview",
   buildPrompt,
   normalizeResult,
   buildFeedback,
