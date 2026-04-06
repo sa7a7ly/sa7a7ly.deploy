@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Classroom = require('../models/Classroom');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const { isSmtpConfigured, sendPasswordResetEmail } = require('../services/emailService');
 
 const ROLE = {
@@ -49,7 +50,12 @@ function addMonths(date, months) {
   return d;
 }
 
-function signAuthToken(user) {
+const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const REFRESH_COOKIE_NAME = 'refreshToken';
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+function signAccessToken(user) {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     throw new Error('JWT secret is not configured');
@@ -62,8 +68,78 @@ function signAuthToken(user) {
       email: user.email,
     },
     secret,
-    { expiresIn: '7d' }
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
   );
+}
+
+function generateRefreshToken(userId) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT secret is not configured');
+  }
+
+  return jwt.sign({ userId }, secret, { expiresIn: REFRESH_TOKEN_EXPIRES_IN });
+}
+
+function getRefreshTokenFromRequest(req) {
+  if (req.cookies && req.cookies[REFRESH_COOKIE_NAME]) {
+    return req.cookies[REFRESH_COOKIE_NAME];
+  }
+  const cookieHeader = req.headers.cookie || '';
+  return cookieHeader
+    .split(';')
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(`${REFRESH_COOKIE_NAME}=`))
+    ?.split('=')[1];
+}
+
+function setRefreshTokenCookie(res, refreshToken) {
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+  });
+}
+
+function clearRefreshTokenCookie(res) {
+  res.clearCookie(REFRESH_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  });
+}
+
+exports.refreshTokenHandler = async (req, res) => {
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT secret is not configured');
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(refreshToken, secret);
+    } catch (err) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const user = await User.findById(payload.userId);
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const accessToken = signAccessToken(user);
+    return res.json({ accessToken });
+  } catch (err) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
 }
 
 function hashResetToken(token) {
@@ -129,8 +205,10 @@ exports.register = async (req, res) => {
     });
 
     user.passwordHash = undefined;
-    const token = signAuthToken(user);
-    res.status(201).json({ user, token });
+    const accessToken = signAccessToken(user);
+    const refreshToken = generateRefreshToken(user._id.toString());
+    setRefreshTokenCookie(res, refreshToken);
+    res.status(201).json({ user, accessToken });
 
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -170,8 +248,10 @@ exports.registerAssistant = async (req, res) => {
     });
 
     user.passwordHash = undefined;
-    const token = signAuthToken(user);
-    res.status(201).json({ user, token });
+    const accessToken = signAccessToken(user);
+    const refreshToken = generateRefreshToken(user._id.toString());
+    setRefreshTokenCookie(res, refreshToken);
+    res.status(201).json({ user, accessToken });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -297,12 +377,93 @@ exports.login = async (req, res) => {
     }
 
     await refreshTeacherSubscriptionStatus(user);
-    const token = signAuthToken(user);
+    const accessToken = signAccessToken(user);
+    const refreshToken = generateRefreshToken(user._id.toString());
     user.passwordHash = undefined;
-    res.json({ user, token });
+    setRefreshTokenCookie(res, refreshToken);
+    res.json({ user, accessToken });
 
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.continueWithGoogle = async (req, res) => {
+  try {
+    const credential = String(req.body?.credential || '').trim();
+    if (!credential) {
+      return res.status(400).json({ message: 'Google credential is required.' });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return res.status(500).json({ message: 'Google client ID is not configured.' });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      return res.status(401).json({ message: 'Invalid Google credential.' });
+    }
+
+    const email = String(payload.email || '').trim().toLowerCase();
+    const name = String(payload.name || payload.given_name || 'Student').trim();
+    const googleId = String(payload.sub || '').trim();
+
+    if (!email || !googleId) {
+      return res.status(400).json({ message: 'Google account is missing required information.' });
+    }
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      user = await User.create({
+        name,
+        email,
+        passwordHash: randomPassword,
+        role: ROLE.STUDENT,
+        googleId,
+      });
+    } else if (!user.googleId) {
+      user.googleId = googleId;
+      await user.save();
+    }
+
+    await refreshTeacherSubscriptionStatus(user);
+    const accessToken = signAccessToken(user);
+    const refreshToken = generateRefreshToken(user._id.toString());
+    user.passwordHash = undefined;
+    setRefreshTokenCookie(res, refreshToken);
+    return res.json({ user, accessToken });
+  } catch (err) {
+    return res.status(400).json({ message: err.message });
+  }
+};
+
+exports.logout = async (req, res) => {
+  clearRefreshTokenCookie(res);
+  res.json({ message: 'Logged out' });
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const user = await User.findById(userId).select('-passwordHash');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json(user);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
 };
 

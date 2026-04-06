@@ -1,18 +1,90 @@
 import axios from 'axios';
 
+let accessToken = null;
+let refreshPromise = null;
+let onUnauthorized = null;
+
+export const setAccessToken = (token) => {
+  accessToken = token || null;
+};
+
+export const getAccessToken = () => accessToken;
+
+export const setOnUnauthorized = (handler) => {
+  onUnauthorized = typeof handler === 'function' ? handler : null;
+};
+
 const API = axios.create({
-  baseURL: '/api'
+  baseURL: 'http://localhost:5000/api',
+  withCredentials: true,
 });
 
+const refreshClient = axios.create({
+  baseURL: 'http://localhost:5000/api',
+  withCredentials: true,
+});
+
+const requestAccessTokenRefresh = async () => {
+  if (!refreshPromise) {
+    refreshPromise = refreshClient
+      .post('/users/refresh-token')
+      .then((res) => {
+        const nextToken = res.data?.accessToken || null;
+        setAccessToken(nextToken);
+        return nextToken;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+};
+
+export const refreshAccessToken = () => requestAccessTokenRefresh();
 
 API.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('token');
-  if (token) {
+  if (accessToken) {
     config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = `Bearer ${accessToken}`;
   }
   return config;
 });
+
+API.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const originalRequest = err.config || {};
+    const status = err.response?.status;
+    const url = originalRequest.url || '';
+    const isAuthEndpoint =
+      url.includes('/users/login') ||
+      url.includes('/users/signup') ||
+      url.includes('/users/register') ||
+      url.includes('/users/refresh-token') ||
+      url.includes('/users/logout');
+
+    if (status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+      originalRequest._retry = true;
+      try {
+        const nextToken = await requestAccessTokenRefresh();
+        if (nextToken) {
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${nextToken}`;
+          return API(originalRequest);
+        }
+      } catch (refreshError) {
+        if (onUnauthorized) {
+          onUnauthorized();
+        }
+        return Promise.reject(refreshError);
+      }
+    }
+
+    return Promise.reject(err);
+  }
+);
+
 
 const PAGED_FETCH_LIMIT = 100;
 const MAX_PAGED_FETCH_LOOPS = 100;
@@ -88,13 +160,22 @@ const fetchAllPages = async (path, params = {}) => {
 
 // AUTH
 export const registerUser = (data) =>
-  API.post('/users/register', data);
+  API.post('/users/signup', data);
 
 export const registerAssistant = (data) =>
   API.post('/users/register-assistant', data);
 
 export const loginUser = (data) =>
   API.post('/users/login', data);
+
+export const continueWithGoogle = (credential) =>
+  API.post('/auth/google', { credential });
+
+export const getMe = () =>
+  API.get('/users/me');
+
+export const logoutUser = () =>
+  API.post('/users/logout');
 
 export const forgotPassword = (data) =>
   API.post('/users/forgot-password', data);

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { loginUser } from '../services/api';
 import logo from '../images/image.png';
 import { useI18n } from '../context/I18nContext';
+import { GoogleLogin } from '@react-oauth/google';
+import { continueWithGoogle } from '../services/api';
 
 function PasswordEyeButton({ visible, onClick, label }) {
   return (
@@ -57,9 +58,12 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [googleError, setGoogleError] = useState('');
+  const [googleNotice, setGoogleNotice] = useState('');
   const [formNotice, setFormNotice] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
   const { t } = useI18n();
@@ -164,19 +168,16 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      const response = await loginUser({
+      const loggedInUser = await login({
         email: email.trim(),
         password,
       });
 
-      login(response.data);
-      const loggedInUser = response.data?.user || response.data;
-
-      if (loggedInUser.role === 'ADMIN') {
+      if (loggedInUser?.role === 'ADMIN') {
         navigate('/admin/users');
-      } else if (loggedInUser.role === 'TEACHER') {
+      } else if (loggedInUser?.role === 'TEACHER') {
         navigate('/teacher-dashboard');
-      } else if (loggedInUser.role === 'ASSISTANT') {
+      } else if (loggedInUser?.role === 'ASSISTANT') {
         navigate('/assistant-dashboard');
       } else {
         navigate('/student-dashboard');
@@ -195,6 +196,50 @@ const LoginPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    if (googleLoading) {
+      return;
+    }
+
+    setGoogleError('');
+    setGoogleNotice('');
+    setError('');
+    setFormNotice('');
+
+    const credential = credentialResponse?.credential || '';
+    if (!credential) {
+      setGoogleError('Google sign-in did not return a credential.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      const response = await continueWithGoogle(credential);
+      const accessToken = response.data?.accessToken || response.data?.token || null;
+      const loggedInUser = await login({ accessToken });
+      setGoogleNotice('Google sign-in successful.');
+
+      if (loggedInUser?.role === 'ADMIN') {
+        navigate('/admin/users');
+      } else if (loggedInUser?.role === 'TEACHER') {
+        navigate('/teacher-dashboard');
+      } else if (loggedInUser?.role === 'ASSISTANT') {
+        navigate('/assistant-dashboard');
+      } else {
+        navigate('/student-dashboard');
+      }
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Google sign-in failed.';
+      setGoogleError(message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setGoogleError('Google sign-in failed.');
   };
 
   return (
@@ -258,6 +303,20 @@ const LoginPage = () => {
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <p className="font-semibold">{t('auth.loginIssue')}</p>
             <p className="mt-1">{error}</p>
+          </div>
+        )}
+
+        {googleNotice && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <p className="font-semibold">Success</p>
+            <p className="mt-1">{googleNotice}</p>
+          </div>
+        )}
+
+        {googleError && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p className="font-semibold">Google sign-in error</p>
+            <p className="mt-1">{googleError}</p>
           </div>
         )}
 
@@ -332,6 +391,25 @@ const LoginPage = () => {
             {loading ? t('common.loading') : t('common.login')}
           </button>
         </form>
+
+          <div className="mt-6">
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              <span>OR</span>
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
+            <div className="mt-4 flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                text="continue_with"
+                shape="pill"
+                size="large"
+                width="320"
+                disabled={googleLoading}
+              />
+            </div>
+          </div>
 
           <p className="text-center mt-6 text-slate-600">
             {t('auth.dontHave')}{' '}

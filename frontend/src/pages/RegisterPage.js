@@ -274,8 +274,14 @@ const RegisterPage = () => {
         password: studentFormData.password,
       });
 
-      login(response.data);
-      navigate('/student-dashboard');
+      const loggedInUser = await login({
+        accessToken: response.data?.accessToken || response.data?.token,
+      });
+      if (loggedInUser?.role === 'ASSISTANT') {
+        navigate('/assistant-dashboard');
+      } else {
+        navigate('/student-dashboard');
+      }
     } catch (err) {
       setError(mapRegisterError(err, false));
     } finally {
@@ -304,8 +310,14 @@ const RegisterPage = () => {
         assistantCode: assistantFormData.assistantCode.trim().toUpperCase(),
       });
 
-      login(response.data);
-      navigate('/assistant-dashboard');
+      const loggedInUser = await login({
+        accessToken: response.data?.accessToken || response.data?.token,
+      });
+      if (loggedInUser?.role === 'TEACHER') {
+        navigate('/teacher-dashboard');
+      } else {
+        navigate('/assistant-dashboard');
+      }
     } catch (err) {
       setError(mapRegisterError(err, true));
     } finally {

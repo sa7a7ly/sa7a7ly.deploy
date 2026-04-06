@@ -9,6 +9,9 @@ const {
   createTeacher,
   createAdmin,
   login,
+  refreshTokenHandler,
+  logout,
+  getMe,
   forgotPassword,
   resetPassword,
   getUsers,
@@ -21,10 +24,15 @@ const {
 
 // Auth
 router.post('/register', register);
+router.post('/signup', register);
 router.post('/register-assistant', registerAssistant);
 router.post('/login', login);
+router.post('/refresh-token', refreshTokenHandler);
+router.post('/logout', logout);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+
+router.get('/me', authenticateToken, getMe);
 
 router.use(authenticateToken);
 
