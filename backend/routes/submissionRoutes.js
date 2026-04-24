@@ -26,6 +26,7 @@ router.post('/mark-reviewed', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), subm
 router.get('/', submissionController.getSubmissions);
 router.get('/by-student', submissionController.getStudentSubmission);
 router.get('/:id/pdf', submissionController.getSubmissionPdf);
+router.post('/:id/resubmit', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.resubmitSubmission);
 router.patch('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.updateSubmissionReview);
 router.delete('/:id', requireRole('ADMIN', 'TEACHER', 'ASSISTANT'), submissionController.deleteSubmission);
 router.get('/:id', submissionController.getSubmission);
