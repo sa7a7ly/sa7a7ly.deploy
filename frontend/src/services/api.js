@@ -15,12 +15,12 @@ export const setOnUnauthorized = (handler) => {
 };
 
 const API = axios.create({
-  baseURL: '/api',
+  baseURL: 'http://localhost:5000/api',
   withCredentials: true,
 });
 
 const refreshClient = axios.create({
-  baseURL: '/api',
+  baseURL: 'http://localhost:5000/api',
   withCredentials: true,
 });
 
@@ -304,6 +304,9 @@ export const getSubmissionById = (submissionId) =>
 
 export const deleteSubmission = (submissionId) =>
   API.delete(`/submissions/${submissionId}`);
+
+export const resubmitSubmission = (submissionId) =>
+  API.post(`/submissions/${submissionId}/resubmit`);
 
 export const markSubmissionsReviewed = (data) =>
   API.post('/submissions/mark-reviewed', data);
