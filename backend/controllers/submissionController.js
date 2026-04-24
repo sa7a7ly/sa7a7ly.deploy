@@ -1,5 +1,6 @@
 const fs = require("fs");
 const axios = require("axios");
+const mongoose = require("mongoose");
 const Submission = require("../models/Submission");
 const Assignment = require("../models/Assignment");
 const ResubmissionRequest = require("../models/ResubmissionRequest");
@@ -113,6 +114,34 @@ async function ensureStaffCanManageClassroom(userId, userRole, classroomId) {
     const allowed = await canManageSubmissionForClassroom(userId, userRole, classroomId);
     if (!allowed) {
         throw new Error("FORBIDDEN_CLASSROOM");
+    }
+}
+
+function isTransactionUnsupported(err) {
+    const message = String(err?.message || "").toLowerCase();
+    return (
+        err?.code === 20 ||
+        message.includes("transaction numbers are only allowed") ||
+        message.includes("replica set member or mongos") ||
+        message.includes("transactions are not supported")
+    );
+}
+
+async function runSubmissionTransaction(work, fallbackWork) {
+    const session = await mongoose.startSession();
+    try {
+        let result;
+        await session.withTransaction(async() => {
+            result = await work(session);
+        });
+        return result;
+    } catch (err) {
+        if (fallbackWork && isTransactionUnsupported(err)) {
+            return fallbackWork();
+        }
+        throw err;
+    } finally {
+        session.endSession();
     }
 }
 
@@ -642,6 +671,159 @@ exports.markSubmissionsReviewed = async(req, res) => {
         });
     } catch (err) {
         return res.status(500).json({ message: err.message });
+    }
+};
+
+// POST resubmit an existing submission using its stored PDF (teacher/assistant/admin)
+exports.resubmitSubmission = async(req, res) => {
+    try {
+        const original = await Submission.findById(req.params.id);
+        if (!original) {
+            return res.status(404).json({ message: "Submission not found" });
+        }
+
+        if (!original.pdfPath || !String(original.pdfPath).trim()) {
+            return res.status(400).json({ message: "Original PDF missing" });
+        }
+
+        try {
+            await getPdfBuffer(original.pdfPath);
+        } catch (err) {
+            return res.status(400).json({ message: "Original PDF missing" });
+        }
+
+        const assignment = await Assignment.findById(original.assignmentId).select(
+            "classroomId title totalPoints dueDate resultVisibility createdBy"
+        );
+        if (!assignment) {
+            return res.status(404).json({ message: "Assignment not found" });
+        }
+
+        const allowed = await canManageSubmissionForClassroom(
+            req.user?.userId,
+            req.user?.role,
+            assignment.classroomId
+        );
+        if (!allowed) {
+            return res.status(403).json({ message: "Not allowed to resubmit this submission" });
+        }
+
+        const classroom = await Classroom.findById(assignment.classroomId).select("teacherId");
+        const teacherId =
+            classroom?.teacherId?.toString() ||
+            assignment.createdBy?.toString() ||
+            null;
+
+        const buildReplacementPayload = (freshOriginal) => ({
+            assignmentId: freshOriginal.assignmentId,
+            studentId: freshOriginal.studentId || null,
+            studentName: freshOriginal.studentName || "",
+            pdfPath: freshOriginal.pdfPath,
+            extractedText: "",
+            grade: null,
+            feedback: "",
+            submittedBy: req.user?.userId || freshOriginal.submittedBy || null,
+            submittedByRole:
+                req.user?.role === "TEACHER" || req.user?.role === "ASSISTANT" ?
+                req.user.role :
+                freshOriginal.submittedByRole,
+            gradedAt: null,
+            reviewedByStaffAt: null,
+            reviewedByStaffId: null,
+            status: "QUEUED",
+            submittedAt: new Date(),
+        });
+
+        const validateFreshOriginal = (freshOriginal) => {
+            if (!freshOriginal) {
+                const err = new Error("Submission not found");
+                err.statusCode = 404;
+                throw err;
+            }
+
+            if (!freshOriginal.pdfPath || !String(freshOriginal.pdfPath).trim()) {
+                const err = new Error("Original PDF missing");
+                err.statusCode = 400;
+                throw err;
+            }
+        };
+
+        const createReplacementWithSession = async(session) => {
+            const freshOriginal = await Submission.findById(original._id).session(session);
+            validateFreshOriginal(freshOriginal);
+
+            const created = await Submission.create(
+                [buildReplacementPayload(freshOriginal)],
+                { session }
+            );
+
+            const deleteResult = await Submission.deleteOne({ _id: freshOriginal._id }).session(session);
+            if (deleteResult.deletedCount !== 1) {
+                throw new Error("Failed to delete original submission");
+            }
+            return created[0];
+        };
+
+        const createReplacementWithoutTransaction = async() => {
+            let created = null;
+            try {
+                const freshOriginal = await Submission.findById(original._id);
+                validateFreshOriginal(freshOriginal);
+
+                created = await Submission.create(buildReplacementPayload(freshOriginal));
+                const deleteResult = await Submission.deleteOne({ _id: freshOriginal._id });
+                if (deleteResult.deletedCount !== 1) {
+                    throw new Error("Failed to delete original submission");
+                }
+                return created;
+            } catch (err) {
+                if (created?._id) {
+                    await Submission.findByIdAndDelete(created._id).catch(() => null);
+                }
+                throw err;
+            }
+        };
+
+        const newSubmission = await runSubmissionTransaction(
+            createReplacementWithSession,
+            createReplacementWithoutTransaction
+        );
+
+        let queuedJob;
+        try {
+            queuedJob = await gradingQueue.addGradingJob({
+                submissionId: newSubmission._id.toString(),
+                teacherId,
+            });
+        } catch (queueErr) {
+            await Submission.findByIdAndUpdate(newSubmission._id, {
+                $set: {
+                    status: "FAILED_PERMANENT",
+                    feedback: `Queueing failed: ${queueErr.message || "Unknown queue error"}`,
+                },
+            }).catch(() => null);
+            throw queueErr;
+        }
+
+        const populated = await Submission.findById(newSubmission._id)
+            .populate("studentId", "name email")
+            .populate("assignmentId", "title totalPoints dueDate resultVisibility");
+        const payload = buildSubmissionResponse(populated, populated.assignmentId, req.user?.role);
+
+        return res.status(201).json({
+            message: "Submission resubmitted successfully.",
+            submission: {
+                ...payload.submission,
+                resultVisible: payload.resultVisible,
+                visibilityPolicy: payload.visibilityPolicy,
+            },
+            queuedJobId: queuedJob?.id || null,
+        });
+    } catch (err) {
+        const statusCode = err.statusCode || 500;
+        return res.status(statusCode).json({
+            message: statusCode === 500 ? "Failed to resubmit submission." : err.message,
+        });
     }
 };
 
