@@ -1,7 +1,19 @@
 const Assignment = require('../models/Assignment');
 const Classroom = require('../models/Classroom');
 const User = require('../models/User');
-const { uploadPdfBuffer } = require('../services/cloudinary');
+const StoredFile = require('../models/StoredFile');
+const fs = require('fs');
+
+function safeDeleteLocalUpload(filePath) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // best-effort cleanup
+  }
+}
 
 const ROLE = {
   ADMIN: 'ADMIN',
@@ -51,17 +63,20 @@ exports.createAssignment = async (req, res) => {
       return res.status(400).json({ message: 'Model answer PDF required' });
     }
 
-    if (!req.file.buffer) {
+    if (!req.file.path) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(400).json({ message: 'Invalid PDF upload' });
     }
 
     const classroom = await Classroom.findById(req.body.classroomId);
     if (!classroom) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(404).json({ message: 'Classroom not found' });
     }
 
     const creator = await User.findById(req.user?.userId);
     if (!creator) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(404).json({ message: 'Creator not found' });
     }
 
@@ -88,28 +103,27 @@ exports.createAssignment = async (req, res) => {
     }
 
     if (!isAdmin && !isTeacherOfClassroom && !isAssistantInClassroom) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(403).json({ message: 'Not allowed to create assignment in this classroom' });
     }
-
-    const uploadedModelAnswer = await uploadPdfBuffer(
-      req.file.buffer,
-      'sa7a7ly/assignments'
-    );
 
     const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
     const normalizedDueDate =
       dueDateValue && !Number.isNaN(dueDateValue.getTime()) ? dueDateValue : null;
     const resultVisibility = normalizeResultVisibility(req.body.resultVisibility);
     if (!resultVisibility) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(400).json({ message: 'Invalid result visibility option' });
     }
     if (resultVisibility === RESULT_VISIBILITY.AFTER_DEADLINE && !normalizedDueDate) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(400).json({
         message: 'A valid due date is required when result visibility is set to after deadline',
       });
     }
     const gradingProfile = normalizeGradingProfile(req.body.gradingProfile);
     if (!gradingProfile) {
+      safeDeleteLocalUpload(req.file?.path);
       return res.status(400).json({ message: 'Invalid grading profile' });
     }
 
@@ -117,7 +131,7 @@ exports.createAssignment = async (req, res) => {
       classroomId: req.body.classroomId,
       title: req.body.title,
       description: req.body.description || '',
-      modelAnswerPdfPath: uploadedModelAnswer.secure_url,
+      modelAnswerPdfPath: req.file.path,
       modelAnswerText: req.body.modelAnswerText,
       totalPoints: req.body.totalPoints || 100,
       dueDate: normalizedDueDate,
@@ -126,12 +140,24 @@ exports.createAssignment = async (req, res) => {
       createdBy: creator._id,
     });
 
+    await StoredFile.create({
+      kind: 'MODEL_ANSWER',
+      assignmentId: assignment._id,
+      localPath: req.file.path,
+      originalLocalPath: req.file.path,
+      originalName: req.file.originalname || '',
+      mimeType: req.file.mimetype || 'application/pdf',
+      sizeBytes: Number(req.file.size || 0),
+      status: 'LOCAL',
+    }).catch(() => null);
+
     classroom.assignments.push(assignment._id);
     await classroom.save();
 
     res.status(201).json(assignment);
   } catch (err) {
     console.error('ASSIGNMENT ERROR:', err);
+    safeDeleteLocalUpload(req.file?.path);
     res.status(400).json({ message: err.message });
   }
 };
@@ -215,6 +241,22 @@ exports.updateAssignment = async (req, res) => {
     }
 
     const assignment = await Assignment.findByIdAndUpdate(req.params.id, updatePayload, { new: true });
+
+    if (req.file?.path) {
+      assignment.modelAnswerPdfPath = req.file.path;
+      await assignment.save();
+
+      await StoredFile.create({
+        kind: 'MODEL_ANSWER',
+        assignmentId: assignment._id,
+        localPath: req.file.path,
+        originalLocalPath: req.file.path,
+        originalName: req.file.originalname || '',
+        mimeType: req.file.mimetype || 'application/pdf',
+        sizeBytes: Number(req.file.size || 0),
+        status: 'LOCAL',
+      }).catch(() => null);
+    }
 
     res.json(assignment);
   } catch (err) {

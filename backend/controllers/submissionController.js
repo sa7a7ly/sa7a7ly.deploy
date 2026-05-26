@@ -6,7 +6,8 @@ const Assignment = require("../models/Assignment");
 const ResubmissionRequest = require("../models/ResubmissionRequest");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
-const { uploadPdfBuffer, cloudinary } = require("../services/cloudinary");
+const StoredFile = require("../models/StoredFile");
+const { cloudinary } = require("../services/cloudinary");
 const gradingQueue = require("../queues/gradingQueue");
 
 const RESULT_VISIBILITY = {
@@ -17,6 +18,17 @@ const RESULT_VISIBILITY = {
 
 const PDF_DOWNLOAD_TIMEOUT_MS = 20000;
 const PDF_DOWNLOAD_RETRIES = 2;
+
+function safeDeleteLocalUpload(filePath) {
+    if (!filePath) return;
+    try {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+    } catch {
+        // best-effort cleanup
+    }
+}
 function getStudentMimeType(file) {
     if (file && file.mimetype) {
         return file.mimetype;
@@ -270,20 +282,19 @@ exports.submitAssignment = async(req, res) => {
         if (!req.file) {
             return res.status(400).json({ message: "Student PDF missing" });
         }
-        if (!req.file.buffer && !req.file.path) {
-            return res.status(400).json({ message: "Invalid PDF upload" });
-        }
-
-        if (!req.file.buffer) {
+        if (!req.file.path) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(400).json({ message: "Invalid PDF upload" });
         }
 
         const assignment = await Assignment.findById(assignmentId);
         if (!assignment) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(404).json({ message: "Assignment not found" });
         }
 
         if (assignment.dueDate && new Date() > new Date(assignment.dueDate)) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
         }
 
@@ -303,6 +314,7 @@ exports.submitAssignment = async(req, res) => {
                 latestRequest.status !== "APPROVED" ||
                 latestRequest.used)
         ) {
+            safeDeleteLocalUpload(req.file?.path);
             const responsePayload = buildSubmissionResponse(existingSubmission, assignment, req.user?.role);
             return res.status(200).json({
                 submission: responsePayload.submission,
@@ -313,22 +325,30 @@ exports.submitAssignment = async(req, res) => {
             });
         }
 
-        const studentUploadFormat = getStudentUploadFormat(req.file);
-        const uploadedSubmission = await uploadPdfBuffer(
-            req.file.buffer,
-            "sa7a7ly/submissions",
-            studentUploadFormat
-        );
-
         const submission = await Submission.create({
             assignmentId,
             studentId,
-            pdfPath: uploadedSubmission.secure_url,
+            pdfPath: req.file.path,
             submittedBy: studentId,
             submittedByRole: "STUDENT",
             status: "QUEUED",
         });
         console.log(`[SubmissionFlow] saved (student): submissionId=${submission._id} assignmentId=${assignmentId}`);
+
+        const student = await User.findById(studentId).select("name").catch(() => null);
+        await StoredFile.create({
+            kind: "SUBMISSION",
+            assignmentId: assignment._id,
+            submissionId: submission._id,
+            studentId: studentId || null,
+            studentName: student?.name || "",
+            localPath: req.file.path,
+            originalLocalPath: req.file.path,
+            originalName: req.file.originalname || "",
+            mimeType: req.file.mimetype || "application/pdf",
+            sizeBytes: Number(req.file.size || 0),
+            status: "LOCAL",
+        }).catch(() => null);
 
         if (latestRequest && latestRequest.status === "APPROVED" && !latestRequest.used) {
             latestRequest.used = true;
@@ -377,6 +397,7 @@ exports.submitAssignment = async(req, res) => {
             err.response.data :
             err
         );
+        safeDeleteLocalUpload(req.file?.path);
 
         return res.status(500).json({
             message: err &&
@@ -398,6 +419,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             return res.status(400).json({ message: "Student PDF missing" });
         }
         if (!assignmentId || !submittedBy || (!studentId && !normalizedStudentName)) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(400).json({
                 message: "assignmentId, submittedBy, and studentName are required",
             });
@@ -405,16 +427,19 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
 
         const assignment = await Assignment.findById(assignmentId);
         if (!assignment) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(404).json({ message: "Assignment not found" });
         }
 
         const classroom = await Classroom.findById(assignment.classroomId);
         if (!classroom) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(404).json({ message: "Classroom not found" });
         }
 
         const staff = await User.findById(submittedBy);
         if (!staff || (staff.role !== "TEACHER" && staff.role !== "ASSISTANT")) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(403).json({ message: "Only teacher or assistant can submit on behalf" });
         }
 
@@ -423,10 +448,12 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             classroom.assistantIds.some((id) => id.toString() === staff._id.toString());
 
         if (!isTeacher && !isAssistant) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(403).json({ message: "Not allowed to submit in this classroom" });
         }
 
         if (assignment.dueDate && new Date() > new Date(assignment.dueDate)) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
         }
 
@@ -444,6 +471,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
                 latestRequest.status !== "APPROVED" ||
                 latestRequest.used)
         ) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(200).json({
                 submission: existingSubmission,
                 alreadySubmitted: true,
@@ -451,18 +479,11 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
             });
         }
 
-        const studentUploadFormat = getStudentUploadFormat(req.file);
-        const uploadBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
-        if (!uploadBuffer) {
+        if (!req.file.path) {
+            safeDeleteLocalUpload(req.file?.path);
             return res.status(400).json({ message: "Invalid PDF upload" });
         }
-
-        const uploadedSubmission = await uploadPdfBuffer(
-            uploadBuffer,
-            "sa7a7ly/submissions",
-            studentUploadFormat
-        );
-        const pdfPath = uploadedSubmission.secure_url;
+        const pdfPath = req.file.path;
 
         const submission = await Submission.create({
             assignmentId,
@@ -503,6 +524,20 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
         );
         console.log(`[SubmissionFlow] response sent (on-behalf): submissionId=${submission._id}`);
 
+        await StoredFile.create({
+            kind: "SUBMISSION",
+            assignmentId: assignment._id,
+            submissionId: submission._id,
+            studentId: studentId || null,
+            studentName: normalizedStudentName,
+            localPath: req.file.path,
+            originalLocalPath: req.file.path,
+            originalName: req.file.originalname || "",
+            mimeType: req.file.mimetype || "application/pdf",
+            sizeBytes: Number(req.file.size || 0),
+            status: "LOCAL",
+        }).catch(() => null);
+
         return res.status(201).json({
             submission,
             alreadySubmitted: false,
@@ -510,6 +545,7 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
         });
     } catch (err) {
         console.error("SUBMISSION ERROR:", err);
+        safeDeleteLocalUpload(req.file?.path);
         res.status(500).json({ message: err.message });
     }
 };

@@ -311,6 +311,13 @@ export const resubmitSubmission = (submissionId) =>
 export const markSubmissionsReviewed = (data) =>
   API.post('/submissions/mark-reviewed', data);
 
+// ADMIN FILES
+export const getLocalStoredFiles = () =>
+  API.get('/admin/files/local');
+
+export const moveStoredFilesToCloudinary = (fileIds) =>
+  API.post('/admin/files/move-to-cloudinary', { fileIds });
+
 export const createResubmissionRequest = (data) =>
   API.post('/resubmissions', data);
 

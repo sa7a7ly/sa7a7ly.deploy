@@ -11,6 +11,7 @@ const AdminNav = () => {
     { to: '/admin/classrooms', label: t('common.classrooms') },
     { to: '/admin/assignments', label: t('common.assignments') },
     { to: '/admin/submissions', label: t('common.submissions') },
+    { to: '/admin/files', label: t('common.files') },
   ];
 
   return (

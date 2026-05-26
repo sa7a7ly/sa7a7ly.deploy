@@ -20,6 +20,7 @@ import AdminTeachers from './pages/admin/AdminTeachers';
 import AdminClassrooms from './pages/admin/AdminClassrooms';
 import AdminAssignments from './pages/admin/AdminAssignments';
 import AdminSubmissions from './pages/admin/AdminSubmissions';
+import AdminFiles from './pages/admin/AdminFiles';
 import ClassroomPageTeacher from './pages/ClassroomPageTeacher';
 import StudentDashboard from './pages/StudentDashboard';
 import ClassroomPageStudent from './pages/ClassroomPageStudent';
@@ -68,6 +69,7 @@ function App() {
             <Route path="classrooms" element={<AdminClassrooms />} />
             <Route path="assignments" element={<AdminAssignments />} />
             <Route path="submissions" element={<AdminSubmissions />} />
+            <Route path="files" element={<AdminFiles />} />
             <Route path="*" element={<AdminUsers />} />
           </Route>
 

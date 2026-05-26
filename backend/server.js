@@ -10,6 +10,7 @@ const classroomRoutes = require('./routes/classroomRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const submissionRoutes = require('./routes/submissionRoutes');
 const resubmissionRoutes = require('./routes/resubmissionRoutes');
+const adminFileRoutes = require('./routes/adminFileRoutes');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/classrooms', classroomRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/resubmissions', resubmissionRoutes);
+app.use('/api/admin/files', adminFileRoutes);
 
 const PORT = process.env.PORT || 5000;
 
