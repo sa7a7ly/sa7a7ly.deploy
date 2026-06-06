@@ -103,25 +103,52 @@ function parseAiJson(aiText) {
   }
 }
 
-function normalizeScoreTotals(result, assignmentTotalPoints) {
+function normalizeScoreTotals(result, assignmentTotalPoints, strategy) {
   let calculatedTotal = 0;
 
-  if (Array.isArray(result.questions)) {
-    result.questions.forEach((q) => {
-      const maxMarks = Number(q.maxMarks);
-      const studentMarks = Number(q.studentMarks);
-      q.maxMarks = Number.isFinite(maxMarks) ? maxMarks : 0;
-      q.studentMarks = Number.isFinite(studentMarks) ? studentMarks : 0;
-      if (q.studentMarks > q.maxMarks) {
-        q.studentMarks = q.maxMarks;
-      }
-      if (q.studentMarks < 0) {
-        q.studentMarks = 0;
-      }
-      q.marksLost = q.maxMarks - q.studentMarks;
-      calculatedTotal += q.studentMarks;
-    });
+  // Normalize numeric fields first
+  if (!Array.isArray(result.questions)) result.questions = [];
+
+  // Convert incoming marks to numbers safely
+  result.questions = result.questions.map((q) => {
+    const maxMarks = Number(q.maxMarks);
+    const studentMarks = Number(q.studentMarks);
+    return {
+      ...q,
+      maxMarks: Number.isFinite(maxMarks) ? maxMarks : 0,
+      studentMarks: Number.isFinite(studentMarks) ? studentMarks : 0,
+    };
+  });
+
+  // If this strategy requests PDF->assignment scaling, apply it here
+  const shouldScale = strategy && strategy.scalePdfToAssignment;
+  if (shouldScale) {
+    const pdfTotalMarks = result.questions.reduce((s, q) => s + (Number(q.maxMarks) || 0), 0);
+    const assignmentTotal = Number(assignmentTotalPoints) || 0;
+
+    if (pdfTotalMarks > 0 && assignmentTotal > 0) {
+      const scaleFactor = assignmentTotal / pdfTotalMarks;
+      result.questions = result.questions.map((q) => {
+        const scaledMax = Math.round((q.maxMarks * scaleFactor) * 100) / 100;
+        const scaledStudent = Math.round((q.studentMarks * scaleFactor) * 100) / 100;
+        const cappedStudent = Math.min(Math.max(scaledStudent, 0), scaledMax);
+        return {
+          ...q,
+          maxMarks: scaledMax,
+          studentMarks: cappedStudent,
+          marksLost: Math.round((scaledMax - cappedStudent) * 100) / 100,
+        };
+      });
+    }
   }
+
+  // Default (or post-scaling) normalization / sanity checks
+  result.questions.forEach((q) => {
+    if (q.studentMarks > q.maxMarks) q.studentMarks = q.maxMarks;
+    if (q.studentMarks < 0) q.studentMarks = 0;
+    q.marksLost = Number.isFinite(Number(q.maxMarks)) && Number.isFinite(Number(q.studentMarks)) ? (Number(q.maxMarks) - Number(q.studentMarks)) : 0;
+    calculatedTotal += Number(q.studentMarks) || 0;
+  });
 
   if (calculatedTotal !== Number(result.totalGrade)) {
     result.totalGrade = calculatedTotal;
@@ -168,7 +195,7 @@ async function gradeWithStrategy({
     result = strategy.normalizeResult(result);
   }
 
-  result = normalizeScoreTotals(result, assignment.totalPoints);
+  result = normalizeScoreTotals(result, assignment.totalPoints, strategy);
   const feedbackText = strategy.buildFeedback(result);
 
   return {

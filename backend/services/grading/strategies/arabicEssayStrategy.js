@@ -167,7 +167,7 @@ function buildFeedback(result) {
 }
 
 module.exports = {
-  modelName: "gemini-3-pro-preview",
+  modelName: "gemini-3.1-pro-preview",
   buildPrompt,
   normalizeResult,
   buildFeedback,

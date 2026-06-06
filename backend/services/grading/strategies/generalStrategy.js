@@ -228,8 +228,10 @@ function buildFeedback(result) {
 }
 
 module.exports = {
-  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-3-pro-preview",
+  modelName: process.env.GEMINI_GENERAL_MODEL || "gemini-3.1-pro-preview",
   buildPrompt,
   normalizeResult,
   buildFeedback,
+  // When true, engine will scale PDF-based marks to the assignment's real totalPoints
+  scalePdfToAssignment: true,
 };
