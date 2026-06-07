@@ -15,12 +15,12 @@ export const setOnUnauthorized = (handler) => {
 };
 
 const API = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: '/api',
   withCredentials: true,
 });
 
 const refreshClient = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: '/api',
   withCredentials: true,
 });
 

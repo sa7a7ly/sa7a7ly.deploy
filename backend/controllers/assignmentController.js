@@ -3,6 +3,7 @@ const Classroom = require('../models/Classroom');
 const User = require('../models/User');
 const StoredFile = require('../models/StoredFile');
 const fs = require('fs');
+const { uploadPdfBuffer } = require('../services/cloudinary');
 
 function safeDeleteLocalUpload(filePath) {
   if (!filePath) return;
@@ -127,11 +128,24 @@ exports.createAssignment = async (req, res) => {
       return res.status(400).json({ message: 'Invalid grading profile' });
     }
 
+    // upload model answer to Cloudinary and create assignment with cloud URL
+    const buffer = fs.readFileSync(req.file.path);
+    let uploadResult;
+    try {
+      uploadResult = await uploadPdfBuffer(buffer, 'model-answers');
+    } catch (err) {
+      safeDeleteLocalUpload(req.file?.path);
+      throw err;
+    }
+
+    const cloudUrl = uploadResult?.secure_url || uploadResult?.url || null;
+    const publicId = uploadResult?.public_id || null;
+
     const assignment = await Assignment.create({
       classroomId: req.body.classroomId,
       title: req.body.title,
       description: req.body.description || '',
-      modelAnswerPdfPath: req.file.path,
+      modelAnswerPdfPath: cloudUrl,
       modelAnswerText: req.body.modelAnswerText,
       totalPoints: req.body.totalPoints || 100,
       dueDate: normalizedDueDate,
@@ -143,13 +157,20 @@ exports.createAssignment = async (req, res) => {
     await StoredFile.create({
       kind: 'MODEL_ANSWER',
       assignmentId: assignment._id,
-      localPath: req.file.path,
+      localPath: null,
       originalLocalPath: req.file.path,
       originalName: req.file.originalname || '',
       mimeType: req.file.mimetype || 'application/pdf',
       sizeBytes: Number(req.file.size || 0),
-      status: 'LOCAL',
+      status: 'CLOUDINARY',
+      cloudinaryUrl: cloudUrl,
+      cloudinaryPublicId: publicId,
+      movedAt: new Date(),
+      localDeletedAt: new Date(),
     }).catch(() => null);
+
+    // delete local copy
+    safeDeleteLocalUpload(req.file?.path);
 
     classroom.assignments.push(assignment._id);
     await classroom.save();
@@ -243,19 +264,38 @@ exports.updateAssignment = async (req, res) => {
     const assignment = await Assignment.findByIdAndUpdate(req.params.id, updatePayload, { new: true });
 
     if (req.file?.path) {
-      assignment.modelAnswerPdfPath = req.file.path;
+      // upload new model answer to Cloudinary
+      const buffer = fs.readFileSync(req.file.path);
+      let uploadResult;
+      try {
+        uploadResult = await uploadPdfBuffer(buffer, 'model-answers');
+      } catch (err) {
+        safeDeleteLocalUpload(req.file?.path);
+        throw err;
+      }
+
+      const cloudUrl = uploadResult?.secure_url || uploadResult?.url || null;
+      const publicId = uploadResult?.public_id || null;
+
+      assignment.modelAnswerPdfPath = cloudUrl;
       await assignment.save();
 
       await StoredFile.create({
         kind: 'MODEL_ANSWER',
         assignmentId: assignment._id,
-        localPath: req.file.path,
+        localPath: null,
         originalLocalPath: req.file.path,
         originalName: req.file.originalname || '',
         mimeType: req.file.mimetype || 'application/pdf',
         sizeBytes: Number(req.file.size || 0),
-        status: 'LOCAL',
+        status: 'CLOUDINARY',
+        cloudinaryUrl: cloudUrl,
+        cloudinaryPublicId: publicId,
+        movedAt: new Date(),
+        localDeletedAt: new Date(),
       }).catch(() => null);
+
+      safeDeleteLocalUpload(req.file?.path);
     }
 
     res.json(assignment);
