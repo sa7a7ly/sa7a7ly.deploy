@@ -120,25 +120,15 @@ function normalizeScoreTotals(result, assignmentTotalPoints, strategy) {
     };
   });
 
-  // If this strategy requests PDF->assignment scaling, apply it here
+  // If this strategy requests PDF->assignment scaling, apply it only to the final total grade
   const shouldScale = strategy && strategy.scalePdfToAssignment;
+  let scaleFactor = 1;
   if (shouldScale) {
     const pdfTotalMarks = result.questions.reduce((s, q) => s + (Number(q.maxMarks) || 0), 0);
     const assignmentTotal = Number(assignmentTotalPoints) || 0;
 
     if (pdfTotalMarks > 0 && assignmentTotal > 0) {
-      const scaleFactor = assignmentTotal / pdfTotalMarks;
-      result.questions = result.questions.map((q) => {
-        const scaledMax = Math.round((q.maxMarks * scaleFactor) * 100) / 100;
-        const scaledStudent = Math.round((q.studentMarks * scaleFactor) * 100) / 100;
-        const cappedStudent = Math.min(Math.max(scaledStudent, 0), scaledMax);
-        return {
-          ...q,
-          maxMarks: scaledMax,
-          studentMarks: cappedStudent,
-          marksLost: Math.round((scaledMax - cappedStudent) * 100) / 100,
-        };
-      });
+      scaleFactor = assignmentTotal / pdfTotalMarks;
     }
   }
 
@@ -150,8 +140,13 @@ function normalizeScoreTotals(result, assignmentTotalPoints, strategy) {
     calculatedTotal += Number(q.studentMarks) || 0;
   });
 
-  if (calculatedTotal !== Number(result.totalGrade)) {
-    result.totalGrade = calculatedTotal;
+  if (!shouldScale) {
+    if (calculatedTotal !== Number(result.totalGrade)) {
+      result.totalGrade = calculatedTotal;
+    }
+  } else {
+    const scaledTotal = Math.ceil(calculatedTotal * scaleFactor);
+    result.totalGrade = Math.min(Math.max(scaledTotal, 0), Number(assignmentTotalPoints) || 0);
   }
 
   if (result.totalGrade > assignmentTotalPoints) {
