@@ -26,21 +26,42 @@ const toSuperscript = (value) =>
     .map((char) => superscriptMap[char] || char)
     .join('');
 
+const MATH_VARIABLE_PATTERN = '[a-zα-ωΑ-Ω]';
+const QUESTION_LABEL_PATTERN = /^\s*(?:Q|Question|سؤال)\s*\d+\s*[:.)-]?\s*$/iu;
+const FEEDBACK_LABEL_PATTERN =
+  /^(Wrong|Correct|Explanation|Reason|Max Marks|Your Marks|Marks Lost):\s*/i;
+
 const isMathLikeLine = (line) =>
-  /(?:\\frac|\\sqrt|sqrt\s*\(|\^|[=±≤≥<>]|[a-zA-Z]\d|\d\s*[-+*/]\s*\d|[-+*/]\s*[a-zA-Z])/u.test(
-    line
-  );
+  !QUESTION_LABEL_PATTERN.test(String(line || '').trim()) &&
+  new RegExp(
+    `(?:\\\\(?:frac|sqrt|Rightarrow|rightarrow|Leftarrow|leftarrow|times|cdot|div|leq|geq|neq)|sqrt\\s*\\(|\\^|[=±≤≥<>]|${MATH_VARIABLE_PATTERN}\\s*[-+*/]\\s*\\d|\\d\\s*[-+*/]\\s*${MATH_VARIABLE_PATTERN}|${MATH_VARIABLE_PATTERN}\\d|\\d${MATH_VARIABLE_PATTERN})`,
+    'u'
+  ).test(line);
 
 const prettifyMathLine = (line) => {
   let next = String(line || '');
 
   next = next
-    .replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '($1) / ($2)')
+    .replace(/\$(.*?)\$/g, '$1')
+    .replace(/\\\((.*?)\\\)/g, '$1')
+    .replace(/\\\[(.*?)\\\]/g, '$1')
     .replace(/\\sqrt\s*\{([^{}]+)\}/g, '√($1)')
+    .replace(/\\sqrt\s*\(([^)]+)\)/g, '√($1)')
+    .replace(/\\([√±≤≥≠×÷⇒⇐→←])/g, '$1')
+    .replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '($1) / ($2)')
+    .replace(/\\Rightarrow\b/g, '⇒')
+    .replace(/\\rightarrow\b/g, '→')
+    .replace(/\\Leftarrow\b/g, '⇐')
+    .replace(/\\leftarrow\b/g, '←')
+    .replace(/\\times\b/g, '×')
+    .replace(/\\cdot\b/g, '·')
+    .replace(/\\div\b/g, '÷')
+    .replace(/\\leq\b/g, '≤')
+    .replace(/\\geq\b/g, '≥')
+    .replace(/\\neq\b/g, '≠')
     .replace(/\bsqrt\s*\(([^)]+)\)/gi, '√($1)')
     .replace(/\bDelta\b/g, 'Δ')
     .replace(/\bdelta\b/g, 'Δ')
-    .replace(/\bdiscriminant\b/gi, 'discriminant Δ')
     .replace(/\+-/g, '±')
     .replace(/<=/g, '≤')
     .replace(/>=/g, '≥')
@@ -51,15 +72,32 @@ const prettifyMathLine = (line) => {
     toSuperscript(power)
   );
 
-  next = next.replace(/([A-Za-z])([2-9])\b/g, (_, variable, power) =>
+  next = next.replace(/\b([a-zα-ωΑ-Ω])([2-9])\b/gu, (_, variable, power) =>
     `${variable}${toSuperscript(power)}`
   );
 
-  next = next.replace(/\s*([=±≤≥<>+*/])\s*/g, ' $1 ');
-  next = next.replace(/\s*-\s*/g, ' - ');
+  next = next.replace(/\b([a-zα-ωΑ-Ω])([a-zα-ωΑ-Ω])([2-9])\b/gu, (_, first, second, power) =>
+    `${first}${second}${toSuperscript(power)}`
+  );
+
+  next = next.replace(/\s*([=±≤≥<>+*/÷×⇒⇐→←])\s*/g, ' $1 ');
+  next = next.replace(/\s+-\s*/g, ' - ');
+  next = next.replace(/([^\s])-\s*/g, '$1 - ');
   next = next.replace(/\s{2,}/g, ' ').trim();
 
   return next;
+};
+
+const prettifyFeedbackLine = (line) => {
+  const source = String(line || '');
+  const labelMatch = source.match(FEEDBACK_LABEL_PATTERN);
+  if (!labelMatch && !isMathLikeLine(source)) return source.trimEnd();
+
+  if (!labelMatch) return prettifyMathLine(source);
+
+  const label = labelMatch[0];
+  const rest = source.slice(label.length);
+  return `${label}${prettifyMathLine(rest)}`;
 };
 
 export const prepareFeedbackForPdf = (feedback, fallback = 'No feedback provided.') => {
@@ -73,7 +111,7 @@ export const prepareFeedbackForPdf = (feedback, fallback = 'No feedback provided
 
   return text
     .split('\n')
-    .map((line) => (isMathLikeLine(line) ? prettifyMathLine(line) : line.trimEnd()))
+    .map(prettifyFeedbackLine)
     .join('\n');
 };
 
@@ -128,7 +166,7 @@ const buildWrappedLines = ({
         );
       const isLabel =
         !isArabic && /^(Wrong|Correct|Explanation|Reason|Max Marks|Your Marks|Marks Lost):/i.test(line.trim());
-      const isMathLine = !isArabic && isMathLikeLine(line);
+      const isMathLine = !isArabic && isMathLikeLine(line) && !isHeading;
 
       ctx.font = `${isHeading || isLabel ? '700 ' : ''}${
         isMathLine ? baseFontPx + 2 : baseFontPx

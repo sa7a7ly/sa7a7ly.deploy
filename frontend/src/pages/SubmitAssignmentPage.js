@@ -12,7 +12,7 @@ import { jsPDF } from 'jspdf';
 import logo from '../images/image.png';
 import arabicEssayPdfLogo from '../images/ms_Eman_logo.jpeg';
 import { useI18n } from '../context/I18nContext';
-import { drawFeedbackTextToPdf } from '../utils/feedbackPdf';
+import { drawFeedbackTextToPdf, prepareFeedbackForPdf } from '../utils/feedbackPdf';
 
 const MAX_SUBMISSION_PDF_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -1577,7 +1577,7 @@ const SubmitAssignmentPage = () => {
                   <div className="px-5 py-5">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                        {feedbackSections.raw || 'No feedback provided.'}
+                        {prepareFeedbackForPdf(feedbackSections.raw || 'No feedback provided.')}
                       </p>
                     </div>
                   </div>
