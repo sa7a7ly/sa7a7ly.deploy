@@ -15,6 +15,7 @@ const AdminTeachers = () => {
     name: '',
     email: '',
     password: '',
+    maxSubmissions: '',
     adminSecret: sessionStorage.getItem('adminSecret') || '',
   });
 
@@ -31,6 +32,7 @@ const AdminTeachers = () => {
             next[teacher._id] = {
               status: teacher.subscriptionStatus || 'TRIAL',
               months: '1',
+              maxSubmissions: teacher.maxSubmissions ?? '',
             };
           }
         });
@@ -74,6 +76,7 @@ const AdminTeachers = () => {
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          maxSubmissions: formData.maxSubmissions || null,
         },
         formData.adminSecret
       );
@@ -111,6 +114,7 @@ const AdminTeachers = () => {
         {
           status: data.status,
           months: data.months,
+          maxSubmissions: data.maxSubmissions || null,
         },
         formData.adminSecret
       );
@@ -215,6 +219,19 @@ const AdminTeachers = () => {
           </div>
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
+              Maximum submissions
+            </label>
+            <input
+              type="number"
+              min="0"
+              name="maxSubmissions"
+              value={formData.maxSubmissions}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">
               {t('common.adminSecret')}
             </label>
             <input
@@ -274,7 +291,7 @@ const AdminTeachers = () => {
                       {new Date(teacher.subscriptionEndDate).toLocaleDateString()}
                     </p>
                   )}
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_0.8fr_0.6fr]">
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1.3fr_0.7fr_0.8fr_0.6fr]">
                     <select
                       value={subscriptionForms[teacher._id]?.status || 'TRIAL'}
                       onChange={(e) =>
@@ -296,6 +313,16 @@ const AdminTeachers = () => {
                       }
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       placeholder={t('common.months')}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={subscriptionForms[teacher._id]?.maxSubmissions ?? ''}
+                      onChange={(e) =>
+                        handleSubscriptionChange(teacher._id, 'maxSubmissions', e.target.value)
+                      }
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Max submissions"
                     />
                     <button
                       type="button"

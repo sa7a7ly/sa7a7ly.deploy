@@ -66,6 +66,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    maxSubmissions: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
   },
   {
     timestamps: true,

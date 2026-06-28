@@ -27,6 +27,10 @@ const TeacherDashboard = () => {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const teacherId = user?._id || '';
+  const maxSubmissions = user?.maxSubmissions ?? null;
+  const usedSubmissions = user?.usedSubmissions ?? 0;
+  const remainingSubmissions =
+    maxSubmissions === null ? null : Math.max(0, (maxSubmissions || 0) - (usedSubmissions || 0));
   const subscriptionEnd = user?.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null;
   const subscriptionActive =
     user?.subscriptionStatus === 'ACTIVE' ||
@@ -251,6 +255,17 @@ const TeacherDashboard = () => {
               <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
                 <p className="text-2xl font-bold text-slate-900">Share</p>
                 <p className="text-sm text-slate-600">Join codes</p>
+              </div>
+              <div className="ml-4">
+                <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm text-center">
+                  <p className="text-sm text-slate-600">Submission Capacity</p>
+                  <p className="text-lg font-bold text-slate-900">
+                    {usedSubmissions} {maxSubmissions !== null ? '/' : ''} {maxSubmissions !== null ? maxSubmissions : ''}
+                  </p>
+                  {remainingSubmissions !== null && (
+                    <p className="text-xs text-slate-500">Remaining: {remainingSubmissions}</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

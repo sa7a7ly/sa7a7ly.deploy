@@ -100,6 +100,39 @@ function buildSubmissionResponse(submission, assignment, userRole) {
     };
 }
 
+async function getTeacherSubmissionCount(teacherId) {
+    if (!teacherId) return 0;
+
+    const result = await Submission.aggregate([
+        {
+            $lookup: {
+                from: 'assignments',
+                localField: 'assignmentId',
+                foreignField: '_id',
+                as: 'assignment',
+            },
+        },
+        { $unwind: '$assignment' },
+        {
+            $lookup: {
+                from: 'classrooms',
+                localField: 'assignment.classroomId',
+                foreignField: '_id',
+                as: 'classroom',
+            },
+        },
+        { $unwind: '$classroom' },
+        {
+            $match: {
+                'classroom.teacherId': new mongoose.Types.ObjectId(teacherId),
+            },
+        },
+        { $count: 'count' },
+    ]);
+
+    return result[0]?.count || 0;
+}
+
 async function canManageSubmissionForClassroom(userId, userRole, classroomId) {
     if (!userId || !userRole) {
         return false;
@@ -298,6 +331,18 @@ exports.submitAssignment = async(req, res) => {
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
         }
 
+        const classroom = await Classroom.findById(assignment.classroomId).select('teacherId');
+        const staffTeacher = classroom ? await User.findById(classroom.teacherId).select('maxSubmissions') : null;
+        if (staffTeacher?.maxSubmissions !== null && typeof staffTeacher?.maxSubmissions !== 'undefined') {
+            const usedCount = await getTeacherSubmissionCount(staffTeacher._id);
+            if (usedCount >= staffTeacher.maxSubmissions) {
+                safeDeleteLocalUpload(req.file?.path);
+                return res.status(400).json({
+                    message: 'This teacher has reached their submission limit. Please contact the administrator to increase the limit.',
+                });
+            }
+        }
+
         const existingSubmission = await Submission.findOne({
             assignmentId,
             studentId,
@@ -455,6 +500,17 @@ exports.submitAssignmentOnBehalf = async(req, res) => {
         if (assignment.dueDate && new Date() > new Date(assignment.dueDate)) {
             safeDeleteLocalUpload(req.file?.path);
             return res.status(400).json({ message: "Submission is closed. The due date has passed." });
+        }
+
+        const staffTeacher = await User.findById(classroom.teacherId).select('maxSubmissions');
+        if (staffTeacher?.maxSubmissions !== null && typeof staffTeacher?.maxSubmissions !== 'undefined') {
+            const usedCount = await getTeacherSubmissionCount(staffTeacher._id);
+            if (usedCount >= staffTeacher.maxSubmissions) {
+                safeDeleteLocalUpload(req.file?.path);
+                return res.status(400).json({
+                    message: 'This teacher has reached their submission limit. Please contact the administrator to increase the limit.',
+                });
+            }
         }
 
         const existingSubmission = studentId ?

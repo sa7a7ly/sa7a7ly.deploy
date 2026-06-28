@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Classroom = require('../models/Classroom');
+const Submission = require('../models/Submission');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
@@ -182,6 +184,54 @@ async function createUniqueAssistantCode() {
   throw new Error('Failed to generate unique assistant code');
 }
 
+async function getTeacherSubmissionCount(teacherId) {
+  if (!teacherId) return 0;
+
+  const result = await Submission.aggregate([
+    {
+      $lookup: {
+        from: 'assignments',
+        localField: 'assignmentId',
+        foreignField: '_id',
+        as: 'assignment',
+      },
+    },
+    { $unwind: '$assignment' },
+    {
+      $lookup: {
+        from: 'classrooms',
+        localField: 'assignment.classroomId',
+        foreignField: '_id',
+        as: 'classroom',
+      },
+    },
+    { $unwind: '$classroom' },
+    {
+      $match: {
+        'classroom.teacherId': new mongoose.Types.ObjectId(teacherId),
+      },
+    },
+    { $count: 'count' },
+  ]);
+
+  return result[0]?.count || 0;
+}
+
+async function attachTeacherSubmissionStats(user) {
+  if (!user || !user.role || user.role !== ROLE.TEACHER) return user;
+
+  const teacherObj = user.toObject ? user.toObject() : { ...user };
+  const usedSubmissions = await getTeacherSubmissionCount(teacherObj._id);
+  const maxSubmissions = teacherObj.maxSubmissions ?? null;
+
+  return {
+    ...teacherObj,
+    usedSubmissions,
+    remainingSubmissions:
+      maxSubmissions === null ? null : Math.max(0, maxSubmissions - usedSubmissions),
+  };
+}
+
 // REGISTER
 exports.register = async (req, res) => {
   try {
@@ -265,7 +315,7 @@ exports.createTeacher = async (req, res) => {
       return res.status(403).json({ message: 'Admin authorization required' });
     }
 
-    const { name, email, password, assistantCode } = req.body;
+    const { name, email, password, assistantCode, maxSubmissions } = req.body;
 
     const exists = await User.findOne({ email });
     if (exists) {
@@ -297,6 +347,13 @@ exports.createTeacher = async (req, res) => {
     const startDate = new Date();
     const endDate = addMonths(startDate, 1);
 
+    const parsedMax = typeof maxSubmissions !== 'undefined' && maxSubmissions !== null && maxSubmissions !== ''
+      ? Number(maxSubmissions)
+      : null;
+    if (parsedMax !== null && (Number.isNaN(parsedMax) || parsedMax < 0)) {
+      return res.status(400).json({ message: 'Maximum submissions must be a non-negative number.' });
+    }
+
     const user = await User.create({
       name,
       email,
@@ -307,6 +364,7 @@ exports.createTeacher = async (req, res) => {
       subscriptionStatus: SUBSCRIPTION_STATUS.TRIAL,
       subscriptionStartDate: startDate,
       subscriptionEndDate: endDate,
+      maxSubmissions: parsedMax,
     });
 
     res.status(201).json({
@@ -318,6 +376,7 @@ exports.createTeacher = async (req, res) => {
         subscriptionStatus: user.subscriptionStatus,
         subscriptionStartDate: user.subscriptionStartDate,
         subscriptionEndDate: user.subscriptionEndDate,
+        maxSubmissions: user.maxSubmissions,
       },
       assistantCode: code,
     });
@@ -461,7 +520,8 @@ exports.getMe = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    return res.json(user);
+    const responseUser = await attachTeacherSubmissionStats(user);
+    return res.json(responseUser);
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
@@ -675,24 +735,37 @@ exports.updateTeacherSubscription = async (req, res) => {
       return res.status(403).json({ message: 'Admin authorization required' });
     }
 
-    const { status, months } = req.body;
+    const { status, months, maxSubmissions } = req.body;
     const teacher = await User.findOne({ _id: req.params.id, role: ROLE.TEACHER });
     if (!teacher) {
       return res.status(404).json({ message: 'Teacher not found' });
     }
 
-    if (!Object.values(SUBSCRIPTION_STATUS).includes(status)) {
-      return res.status(400).json({ message: 'Invalid subscription status' });
+    if (typeof maxSubmissions !== 'undefined') {
+      if (maxSubmissions === null || maxSubmissions === '') {
+        teacher.maxSubmissions = null;
+      } else {
+        const parsedMax = Number(maxSubmissions);
+        if (Number.isNaN(parsedMax) || parsedMax < 0) {
+          return res.status(400).json({ message: 'Maximum submissions must be a non-negative number.' });
+        }
+        teacher.maxSubmissions = parsedMax;
+      }
+    }
+
+    if (typeof status !== 'undefined') {
+      if (!Object.values(SUBSCRIPTION_STATUS).includes(status)) {
+        return res.status(400).json({ message: 'Invalid subscription status' });
+      }
+      teacher.subscriptionStatus = status;
     }
 
     const now = new Date();
-    teacher.subscriptionStatus = status;
-
-    if (status === SUBSCRIPTION_STATUS.ACTIVE || status === SUBSCRIPTION_STATUS.TRIAL) {
+    if (teacher.subscriptionStatus === SUBSCRIPTION_STATUS.ACTIVE || teacher.subscriptionStatus === SUBSCRIPTION_STATUS.TRIAL) {
       const durationMonths = Number(months || 1);
       teacher.subscriptionStartDate = now;
       teacher.subscriptionEndDate = addMonths(now, durationMonths);
-    } else if (status === SUBSCRIPTION_STATUS.CANCELED) {
+    } else if (teacher.subscriptionStatus === SUBSCRIPTION_STATUS.CANCELED) {
       teacher.subscriptionEndDate = now;
     }
 
@@ -702,6 +775,7 @@ exports.updateTeacherSubscription = async (req, res) => {
       subscriptionStatus: teacher.subscriptionStatus,
       subscriptionStartDate: teacher.subscriptionStartDate,
       subscriptionEndDate: teacher.subscriptionEndDate,
+      maxSubmissions: teacher.maxSubmissions,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -710,7 +784,12 @@ exports.updateTeacherSubscription = async (req, res) => {
 
 // GET single user
 exports.getUser = async (req, res) => {
-  const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ message: 'User not found' });
-  res.json(user);
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const responseUser = await attachTeacherSubmissionStats(user);
+    res.json(responseUser);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 };

@@ -201,6 +201,7 @@ function buildFeedback(result) {
       feedbackText += `${q.questionNumber}\n`;
       feedbackText += isArabic ? `الدرجة الكلية: ${q.maxMarks}\n` : `Max Marks: ${q.maxMarks}\n`;
       feedbackText += isArabic ? `درجتك: ${q.studentMarks}\n` : `Your Marks: ${q.studentMarks}\n`;
+
       feedbackText += isArabic
         ? `الدرجات المفقودة: ${q.marksLost}\n`
         : `Marks Lost: ${q.marksLost}\n`;
