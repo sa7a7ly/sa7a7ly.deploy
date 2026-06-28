@@ -401,7 +401,6 @@ exports.submitAssignment = async(req, res) => {
             await latestRequest.save();
         }
 
-        const classroom = await Classroom.findById(assignment.classroomId).select("teacherId");
         const teacherId =
             classroom?.teacherId?.toString() ||
             assignment.createdBy?.toString() ||
